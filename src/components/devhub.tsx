@@ -6,11 +6,14 @@ import {
   FileJson, Hash, LayoutDashboard, Menu, Regex, Search, Send,
   Sparkles, Terminal, WandSparkles, Workflow, Zap, Key, Lock, Globe, Split,
   Palette, Database, FileText, Code2, History, RotateCcw, X, Star,
-  SlidersHorizontal, ChevronRight
+  SlidersHorizontal, ChevronRight, Binary, CalendarClock, KeyRound,
+  DownloadCloud, CheckCheck, RefreshCw, CodeXml
 } from "lucide-react";
 import {
   computeHash, computeLineDiff, decodeJwt, formatSql, generateNanoId,
-  generateUlid, generateUuidV7, type DecodedJwt, type DiffLine
+  generateUlid, generateUuidV7, utf8ToBase64, base64ToUtf8, jsonToTypeScript,
+  explainCron, convertNumberBase, encodeHtmlEntities, decodeHtmlEntities,
+  parseCurl, generatePassword, type DecodedJwt, type DiffLine, type NumberBases
 } from "@/lib/utils";
 
 type View =
@@ -29,7 +32,11 @@ type View =
   | "Markdown Preview"
   | "Lorem Generator"
   | "API Workspace"
-  | "AI Assistant";
+  | "AI Assistant"
+  | "JSON to TS"
+  | "Cron Parser"
+  | "Password Gen"
+  | "Base Converter";
 
 type ToolCategory = "All" | "Format & Convert" | "Security" | "Network" | "Text" | "Workspace";
 
@@ -42,24 +49,28 @@ type Tool = {
 };
 
 const tools: Tool[] = [
-  { name: "JSON Formatter", description: "Format, validate, sort keys, and minify JSON payloads.", icon: FileJson, tag: "FORMAT", category: "Format & Convert" },
-  { name: "Base64 Codec", description: "Encode or decode text with Base64 & URL-safe support.", icon: ArrowDownToLine, tag: "ENCODE", category: "Format & Convert" },
-  { name: "UUID Generator", description: "Generate v4, v7 (timestamp-ordered), NanoID, or ULIDs.", icon: Hash, tag: "GENERATE", category: "Security" },
+  { name: "JSON Formatter", description: "Validate, format, sort keys, unescape and clean JSON payloads.", icon: FileJson, tag: "FORMAT", category: "Format & Convert" },
+  { name: "JSON to TS", description: "Convert JSON objects and arrays into TypeScript interfaces.", icon: CodeXml, tag: "TYPES", category: "Format & Convert" },
+  { name: "Base64 Codec", description: "UTF-8 safe encode/decode with optional URL-Safe Base64 mode.", icon: ArrowDownToLine, tag: "ENCODE", category: "Format & Convert" },
+  { name: "UUID Generator", description: "Generate v4, v7 (time-ordered), NanoID, or ULIDs in bulk.", icon: Hash, tag: "GENERATE", category: "Security" },
+  { name: "Password Gen", description: "Generate strong passwords and tokens with live entropy score.", icon: KeyRound, tag: "AUTH", category: "Security" },
   { name: "Regex Tester", description: "Test regular expressions with groups, replacement, and cheat sheets.", icon: Regex, tag: "TEST", category: "Text" },
-  { name: "Timestamp Converter", description: "Convert Unix epoch to readable dates and relative time.", icon: Clock3, tag: "CONVERT", category: "Format & Convert" },
-  { name: "JWT Debugger", description: "Decode and inspect JSON Web Tokens, headers, and expiry.", icon: Key, tag: "AUTH", category: "Security" },
-  { name: "Hash Generator", description: "Compute SHA-256, SHA-512, SHA-1, MD5, and HMAC hashes.", icon: Lock, tag: "CRYPTO", category: "Security" },
-  { name: "URL Codec", description: "Encode/decode URLs and inspect query parameters.", icon: Globe, tag: "URL", category: "Network" },
-  { name: "Diff Checker", description: "Compare two text or code snippets line by line.", icon: Split, tag: "DIFF", category: "Text" },
-  { name: "Color Converter", description: "Convert HEX, RGB, HSL color codes with live swatch.", icon: Palette, tag: "COLOR", category: "Format & Convert" },
+  { name: "Timestamp Converter", description: "Convert Unix epoch to dates, relative time, and live clock.", icon: Clock3, tag: "CONVERT", category: "Format & Convert" },
+  { name: "Cron Parser", description: "Explain cron schedules in English and compute upcoming runs.", icon: CalendarClock, tag: "CRON", category: "Format & Convert" },
+  { name: "JWT Debugger", description: "Decode and inspect JSON Web Tokens, headers, and expiry status.", icon: Key, tag: "AUTH", category: "Security" },
+  { name: "Hash Generator", description: "Compute SHA-256, SHA-512, MD5, CRC-32, and HMAC digests.", icon: Lock, tag: "CRYPTO", category: "Security" },
+  { name: "URL Codec", description: "Encode/decode URLs, parse query params, and HTML entities.", icon: Globe, tag: "URL", category: "Network" },
+  { name: "Base Converter", description: "Simultaneous 4-way Decimal, Hex, Binary, and Octal converter.", icon: Binary, tag: "MATH", category: "Format & Convert" },
+  { name: "Diff Checker", description: "Compare two text or code snippets line-by-line with diff markers.", icon: Split, tag: "DIFF", category: "Text" },
+  { name: "Color Converter", description: "Convert HEX, RGB, HSL color codes with live swatch & picker.", icon: Palette, tag: "COLOR", category: "Format & Convert" },
   { name: "SQL Formatter", description: "Format SQL queries with uppercase keywords & indentation.", icon: Database, tag: "SQL", category: "Format & Convert" },
-  { name: "Markdown Preview", description: "Live split-pane markdown editor with preview & HTML export.", icon: FileText, tag: "MARKDOWN", category: "Text" },
-  { name: "Lorem Generator", description: "Generate placeholder text, sentences, or mock JSON profiles.", icon: Code2, tag: "MOCK", category: "Text" },
-  { name: "API Workspace", description: "Full HTTP client with headers, body, cURL generator, and latency.", icon: Workflow, tag: "API", category: "Workspace" },
-  { name: "AI Assistant", description: "Engineering copilot for code debugging, architecture, and tests.", icon: Sparkles, tag: "AI", category: "Workspace" },
+  { name: "Markdown Preview", description: "Live split-pane markdown editor with preview & word count.", icon: FileText, tag: "MARKDOWN", category: "Text" },
+  { name: "Lorem Generator", description: "Generate placeholder text, sentences, or mock JSON users.", icon: Code2, tag: "MOCK", category: "Text" },
+  { name: "API Workspace", description: "REST client with cURL import/export, headers, and latency.", icon: Workflow, tag: "API", category: "Workspace" },
+  { name: "AI Assistant", description: "Engineering copilot for debugging, architecture, and tests.", icon: Sparkles, tag: "AI", category: "Workspace" },
 ];
 
-const starterJson = '{\n  "name": "DevHub",\n  "version": "1.0.0",\n  "status": "ready",\n  "features": ["tools", "api-workspace", "ai-assistant"]\n}';
+const starterJson = '{\n  "name": "DevHub",\n  "version": "2.0.0",\n  "status": "ready",\n  "features": ["tools", "api-workspace", "ai-assistant"]\n}';
 
 type ApiHistoryItem = {
   id: string;
@@ -83,6 +94,9 @@ export default function DevHub() {
   const [mobileNav, setMobileNav] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [cmdSearch, setCmdSearch] = useState("");
+  const [cmdSelectedIndex, setCmdSelectedIndex] = useState(0);
+  const [currentTime, setCurrentTime] = useState("");
+
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -90,7 +104,7 @@ export default function DevHub() {
         if (saved) return JSON.parse(saved);
       } catch {}
     }
-    return ["JSON Formatter", "API Workspace", "AI Assistant"];
+    return ["JSON Formatter", "API Workspace", "AI Assistant", "JSON to TS"];
   });
 
   // --- JSON Formatter State ---
@@ -99,8 +113,13 @@ export default function DevHub() {
   const [jsonMode, setJsonMode] = useState<"pretty" | "minify">("pretty");
   const [jsonStats, setJsonStats] = useState<{ keys: number; bytes: number } | null>(null);
 
+  // --- JSON to TypeScript State ---
+  const [jsonTsInput, setJsonTsInput] = useState(starterJson);
+  const [jsonTsOutput, setJsonTsOutput] = useState("");
+  const [jsonTsRootName, setJsonTsRootName] = useState("DevHubConfig");
+
   // --- Base64 State ---
-  const [base64Input, setBase64Input] = useState("Hello, DevHub Developer Workspace!");
+  const [base64Input, setBase64Input] = useState("Hello, DevHub Developer Workspace! 🚀");
   const [base64Output, setBase64Output] = useState("");
   const [base64Mode, setBase64Mode] = useState<"encode" | "decode">("encode");
   const [urlSafeBase64, setUrlSafeBase64] = useState(false);
@@ -111,6 +130,15 @@ export default function DevHub() {
   const [uuidUppercase, setUuidUppercase] = useState(false);
   const [uuidNoHyphens, setUuidNoHyphens] = useState(false);
   const [uuidOutput, setUuidOutput] = useState("");
+
+  // --- Password Generator State ---
+  const [passLength, setPassLength] = useState("16");
+  const [passUpper, setPassUpper] = useState(true);
+  const [passLower, setPassLower] = useState(true);
+  const [passNumbers, setPassNumbers] = useState(true);
+  const [passSymbols, setPassSymbols] = useState(true);
+  const [passAvoidAmbiguous, setPassAvoidAmbiguous] = useState(false);
+  const [passResult, setPassResult] = useState<{ password: string; entropyBits: number } | null>(null);
 
   // --- Regex Tester State ---
   const [pattern, setPattern] = useState("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
@@ -125,6 +153,10 @@ export default function DevHub() {
   const [dateInput, setDateInput] = useState("");
   const [timestampOutput, setTimestampOutput] = useState("");
 
+  // --- Cron Parser State ---
+  const [cronInput, setCronInput] = useState("*/15 * * * *");
+  const [cronResult, setCronResult] = useState<{ explanation: string; nextRuns: string[]; error?: string } | null>(null);
+
   // --- JWT Debugger State ---
   const [jwtToken, setJwtToken] = useState(
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFsZXggRGV2ZWxvcGVyIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMiwiZXhwIjoxODMxNjIzOTAyfQ.signature"
@@ -133,9 +165,10 @@ export default function DevHub() {
 
   // --- Hash & HMAC State ---
   const [hashInput, setHashInput] = useState("Developer Hub Secure Payload");
-  const [hashAlgorithm, setHashAlgorithm] = useState<"SHA-256" | "SHA-512" | "SHA-1" | "MD5">("SHA-256");
+  const [hashAlgorithm, setHashAlgorithm] = useState<"SHA-256" | "SHA-512" | "SHA-1" | "MD5" | "CRC-32">("SHA-256");
   const [hashKey, setHashKey] = useState("");
   const [hashOutput, setHashOutput] = useState("");
+  const [verifyHashTarget, setVerifyHashTarget] = useState("");
 
   // --- URL Codec & Query Parser State ---
   const [urlInput, setUrlInput] = useState("https://api.example.com/v1/search?query=react+nextjs&limit=25&sort=desc#results");
@@ -148,6 +181,11 @@ export default function DevHub() {
     hash: string;
     params: Array<{ key: string; value: string }>;
   } | null>(null);
+
+  // --- Number Base Converter State ---
+  const [baseInputVal, setBaseInputVal] = useState("255");
+  const [baseFrom, setBaseFrom] = useState<2 | 8 | 10 | 16>(10);
+  const [baseResults, setBaseResults] = useState<NumberBases | null>(null);
 
   // --- Diff Checker State ---
   const [diffOld, setDiffOld] = useState("const version = '1.0.0';\nconsole.log('App starting');\nexport default version;");
@@ -163,7 +201,7 @@ export default function DevHub() {
   const [sqlOutput, setSqlOutput] = useState("");
 
   // --- Markdown Preview State ---
-  const [markdownInput, setMarkdownInput] = useState("# Welcome to DevHub\n\nA **supercharged** dark terminal workspace for developers.\n\n- [x] Fast client-side tools\n- [x] Safe HTTP API workspace\n- [x] AI Engineering Copilot\n\n```ts\nconst greeting = 'Happy Coding!';\nconsole.log(greeting);\n```");
+  const [markdownInput, setMarkdownInput] = useState("# Welcome to DevHub 2.0\n\nA **supercharged** dark terminal workspace for developers.\n\n- [x] 19 fast client-side developer tools\n- [x] Dual-mode HTTP REST API client\n- [x] AI Engineering Copilot with multi-turn chat\n\n```ts\nconst dev = { focus: 'build', velocity: 'high' };\nconsole.log(dev);\n```");
 
   // --- Lorem & Mock Data State ---
   const [loremType, setLoremType] = useState<"paragraphs" | "sentences" | "words" | "mock_json">("paragraphs");
@@ -173,7 +211,9 @@ export default function DevHub() {
   // --- API Workspace State ---
   const [apiMethod, setApiMethod] = useState("GET");
   const [apiUrl, setApiUrl] = useState("https://jsonplaceholder.typicode.com/todos/1");
-  const [apiActiveTab, setApiActiveTab] = useState<"params" | "headers" | "body">("headers");
+  const [apiExecutionMode, setApiExecutionMode] = useState<"proxy" | "direct">("proxy");
+  const [apiActiveTab, setApiActiveTab] = useState<"params" | "headers" | "body" | "import">("headers");
+  const [apiCurlImport, setApiCurlImport] = useState("");
   const [apiHeaders, setApiHeaders] = useState<Array<{ key: string; value: string; enabled: boolean }>>([
     { key: "Accept", value: "application/json", enabled: true },
     { key: "Content-Type", value: "application/json", enabled: false },
@@ -230,7 +270,17 @@ export default function DevHub() {
     }
   }, [notify]);
 
-  // --- Keyboard Shortcuts ---
+  // --- Clock Ticker & Keyboard Shortcuts ---
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toTimeString().split(" ")[0] + " UTC" + (now.getTimezoneOffset() <= 0 ? "+" : "-") + Math.abs(now.getTimezoneOffset() / 60));
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -265,13 +315,33 @@ export default function DevHub() {
     });
   }, [search, categoryFilter]);
 
+  const cmdFilteredTools = useMemo(() => {
+    return tools.filter((t) =>
+      (t.name + " " + t.description + " " + t.tag).toLowerCase().includes(cmdSearch.toLowerCase())
+    );
+  }, [cmdSearch]);
+
   // --- TOOL RUNNERS ---
 
-  const runJsonFormatter = (action: "pretty" | "minify" | "sort") => {
+  const runJsonFormatter = (action: "pretty" | "minify" | "sort" | "clean" | "unescape") => {
     try {
-      const parsed = JSON.parse(jsonInput);
+      let workingInput = jsonInput.trim();
+      if (action === "unescape") {
+        if (workingInput.startsWith('"') && workingInput.endsWith('"')) {
+          workingInput = JSON.parse(workingInput);
+        } else {
+          workingInput = workingInput.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+        }
+      } else if (action === "clean") {
+        // Fix trailing commas and single quotes
+        workingInput = workingInput
+          .replace(/,\s*([}\]])/g, "$1")
+          .replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
+      }
+
+      const parsed = JSON.parse(workingInput);
       let outputStr = "";
-      if (action === "pretty") {
+      if (action === "pretty" || action === "clean" || action === "unescape") {
         outputStr = JSON.stringify(parsed, null, 2);
       } else if (action === "minify") {
         outputStr = JSON.stringify(parsed);
@@ -295,28 +365,24 @@ export default function DevHub() {
         keys: typeof parsed === "object" && parsed !== null ? Object.keys(parsed).length : 1,
         bytes: new Blob([outputStr]).size,
       });
+      notify("JSON processed successfully");
     } catch (err) {
       setJsonOutput(`JSON Error: ${err instanceof Error ? err.message : "Invalid JSON"}`);
       setJsonStats(null);
     }
   };
 
+  const runJsonToTs = () => {
+    const res = jsonToTypeScript(jsonTsInput, jsonTsRootName.trim() || "RootObject");
+    setJsonTsOutput(res);
+  };
+
   const runBase64 = () => {
     try {
       if (base64Mode === "encode") {
-        const encoded = btoa(unescape(encodeURIComponent(base64Input)));
-        const finalVal = urlSafeBase64
-          ? encoded.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
-          : encoded;
-        setBase64Output(finalVal);
+        setBase64Output(utf8ToBase64(base64Input, urlSafeBase64));
       } else {
-        let clean = base64Input.trim();
-        if (urlSafeBase64) {
-          clean = clean.replace(/-/g, "+").replace(/_/g, "/");
-          while (clean.length % 4) clean += "=";
-        }
-        const decoded = decodeURIComponent(escape(atob(clean)));
-        setBase64Output(decoded);
+        setBase64Output(base64ToUtf8(base64Input, urlSafeBase64));
       }
     } catch (err) {
       setBase64Output(`Base64 Error: ${err instanceof Error ? err.message : "Invalid Base64 input"}`);
@@ -338,6 +404,19 @@ export default function DevHub() {
       ids.push(id);
     }
     setUuidOutput(ids.join("\n"));
+  };
+
+  const runPasswordGenerator = () => {
+    const len = Math.max(4, Math.min(128, Number(passLength) || 16));
+    const result = generatePassword({
+      length: len,
+      uppercase: passUpper,
+      lowercase: passLower,
+      numbers: passNumbers,
+      symbols: passSymbols,
+      avoidAmbiguous: passAvoidAmbiguous,
+    });
+    setPassResult(result);
   };
 
   const runRegex = () => {
@@ -367,9 +446,9 @@ export default function DevHub() {
     }
   };
 
-  const applyRegexPreset = (presetPattern: string, desc: string) => {
-    setPattern(presetPattern);
-    notify(`Applied preset: ${desc}`);
+  const runCron = () => {
+    const result = explainCron(cronInput);
+    setCronResult(result);
   };
 
   const runTimestamp = () => {
@@ -395,18 +474,6 @@ export default function DevHub() {
     }
   };
 
-  const convertDateToTimestamp = () => {
-    try {
-      if (!dateInput) throw new Error("Select or enter a date string.");
-      const d = new Date(dateInput);
-      if (Number.isNaN(d.getTime())) throw new Error("Invalid date format.");
-      setTimestampInput(String(Math.floor(d.getTime() / 1000)));
-      notify("Timestamp updated from date");
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Invalid date");
-    }
-  };
-
   const runJwt = () => {
     const decoded = decodeJwt(jwtToken);
     setJwtResult(decoded);
@@ -421,12 +488,23 @@ export default function DevHub() {
     }
   };
 
-  const runUrlCodec = (action: "encode" | "decode" | "parse") => {
+  const runNumberBase = (val: string, base: 2 | 8 | 10 | 16) => {
+    setBaseInputVal(val);
+    setBaseFrom(base);
+    const converted = convertNumberBase(val, base);
+    setBaseResults(converted);
+  };
+
+  const runUrlCodec = (action: "encode" | "decode" | "parse" | "html_encode" | "html_decode") => {
     try {
       if (action === "encode") {
         setUrlOutput(encodeURIComponent(urlInput));
       } else if (action === "decode") {
         setUrlOutput(decodeURIComponent(urlInput));
+      } else if (action === "html_encode") {
+        setUrlOutput(encodeHtmlEntities(urlInput));
+      } else if (action === "html_decode") {
+        setUrlOutput(decodeHtmlEntities(urlInput));
       } else if (action === "parse") {
         const u = new URL(urlInput);
         const params: Array<{ key: string; value: string }> = [];
@@ -470,7 +548,6 @@ export default function DevHub() {
       const g = parseInt(fullHex.slice(3, 5), 16);
       const b = parseInt(fullHex.slice(5, 7), 16);
 
-      // Convert to HSL
       const rNorm = r / 255;
       const gNorm = g / 255;
       const bNorm = b / 255;
@@ -564,32 +641,30 @@ export default function DevHub() {
       headersObj[h.key.trim()] = h.value;
     });
 
+    const startTime = Date.now();
+
     try {
-      const response = await fetch("/api/proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: apiUrl.trim(),
+      if (apiExecutionMode === "direct") {
+        // Direct browser fetch (for CORS-enabled APIs or local microservices)
+        const fetchOpts: RequestInit = {
           method: apiMethod,
           headers: headersObj,
-          body: ["POST", "PUT", "PATCH"].includes(apiMethod) ? apiBody : undefined,
-        }),
-      });
+        };
+        if (["POST", "PUT", "PATCH"].includes(apiMethod) && apiBody.trim()) {
+          fetchOpts.body = apiBody;
+        }
+        const res = await fetch(apiUrl.trim(), fetchOpts);
+        const durationMs = Date.now() - startTime;
+        const text = await res.text();
+        const resHeaders: Record<string, string> = {};
+        res.headers.forEach((v, k) => { resHeaders[k] = v; });
 
-      const resData = await response.json();
-      if (!response.ok) {
         setApiResult({
-          status: response.status,
-          statusText: response.statusText,
-          error: resData.error || "Proxy request failed",
-        });
-      } else {
-        setApiResult({
-          status: resData.status,
-          statusText: resData.statusText,
-          durationMs: resData.durationMs,
-          headers: resData.headers,
-          data: resData.data,
+          status: res.status,
+          statusText: res.statusText,
+          durationMs,
+          headers: resHeaders,
+          data: text,
         });
 
         const newHistoryItem: ApiHistoryItem = {
@@ -597,16 +672,57 @@ export default function DevHub() {
           timestamp: new Date().toLocaleTimeString(),
           method: apiMethod,
           url: apiUrl,
-          status: resData.status,
-          durationMs: resData.durationMs,
+          status: res.status,
+          durationMs,
         };
         setApiHistory((prev) => {
           const next = [newHistoryItem, ...prev.slice(0, 9)];
-          try {
-            localStorage.setItem("devhub_api_history", JSON.stringify(next));
-          } catch {}
+          try { localStorage.setItem("devhub_api_history", JSON.stringify(next)); } catch {}
           return next;
         });
+      } else {
+        // Safe server proxy
+        const response = await fetch("/api/proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: apiUrl.trim(),
+            method: apiMethod,
+            headers: headersObj,
+            body: ["POST", "PUT", "PATCH"].includes(apiMethod) ? apiBody : undefined,
+          }),
+        });
+
+        const resData = await response.json();
+        if (!response.ok) {
+          setApiResult({
+            status: response.status,
+            statusText: response.statusText,
+            error: resData.error || "Proxy request failed",
+          });
+        } else {
+          setApiResult({
+            status: resData.status,
+            statusText: resData.statusText,
+            durationMs: resData.durationMs,
+            headers: resData.headers,
+            data: resData.data,
+          });
+
+          const newHistoryItem: ApiHistoryItem = {
+            id: crypto.randomUUID(),
+            timestamp: new Date().toLocaleTimeString(),
+            method: apiMethod,
+            url: apiUrl,
+            status: resData.status,
+            durationMs: resData.durationMs,
+          };
+          setApiHistory((prev) => {
+            const next = [newHistoryItem, ...prev.slice(0, 9)];
+            try { localStorage.setItem("devhub_api_history", JSON.stringify(next)); } catch {}
+            return next;
+          });
+        }
       }
     } catch (err) {
       setApiResult({
@@ -615,6 +731,25 @@ export default function DevHub() {
     } finally {
       setApiBusy(false);
     }
+  };
+
+  const importCurlCommand = () => {
+    const parsed = parseCurl(apiCurlImport);
+    if (parsed.error) {
+      notify(parsed.error);
+      return;
+    }
+    setApiMethod(parsed.method);
+    setApiUrl(parsed.url);
+    if (parsed.body) setApiBody(parsed.body);
+    const newHeaders = Object.entries(parsed.headers).map(([key, value]) => ({
+      key,
+      value,
+      enabled: true,
+    }));
+    if (newHeaders.length) setApiHeaders(newHeaders);
+    setApiActiveTab("headers");
+    notify("cURL request imported successfully!");
   };
 
   const generateCurl = () => {
@@ -687,7 +822,7 @@ export default function DevHub() {
               <div className="panel-head">
                 <div>
                   <div className="panel-title">JSON Input</div>
-                  <div className="panel-subtitle">Paste JSON payload to validate, format, or sort.</div>
+                  <div className="panel-subtitle">Paste JSON payload to validate, format, sort, or clean.</div>
                 </div>
                 <span className="pill">VALIDATOR</span>
               </div>
@@ -696,12 +831,17 @@ export default function DevHub() {
                   <button className={`btn ${jsonMode === "pretty" ? "btn-primary" : ""}`} onClick={() => { setJsonMode("pretty"); runJsonFormatter("pretty"); }}>Pretty Print</button>
                   <button className={`btn ${jsonMode === "minify" ? "btn-primary" : ""}`} onClick={() => { setJsonMode("minify"); runJsonFormatter("minify"); }}>Minify</button>
                   <button className="btn" onClick={() => runJsonFormatter("sort")}>Sort Keys</button>
+                  <button className="btn" title="Fix common errors like single quotes and trailing commas" onClick={() => runJsonFormatter("clean")}>Fix Common Errors</button>
+                  <button className="btn" title="Unescape stringified JSON" onClick={() => runJsonFormatter("unescape")}>Unescape</button>
                   <button className="btn" onClick={() => { setJsonInput(""); setJsonOutput(""); setJsonStats(null); }}>Clear</button>
                 </div>
                 <textarea className="textarea" value={jsonInput} onChange={(e) => setJsonInput(e.target.value)} spellCheck={false} placeholder='{"key": "value"}' />
                 <div className="row-wrap">
                   <button className="btn btn-primary" onClick={() => runJsonFormatter(jsonMode)}>
-                    <Zap size={14} /> Format JSON
+                    <Zap size={14} /> Process JSON
+                  </button>
+                  <button className="btn" onClick={() => { setJsonTsInput(jsonInput); setView("JSON to TS"); }}>
+                    <CodeXml size={13} /> Generate TypeScript Types
                   </button>
                 </div>
               </div>
@@ -718,7 +858,47 @@ export default function DevHub() {
               </div>
               <div className="panel-body">
                 <div className={`result-box ${jsonOutput.startsWith("JSON Error:") ? "error" : "code-output"}`}>
-                  {jsonOutput || "Waiting for input…\n\nClick 'Format JSON' to view formatted payload."}
+                  {jsonOutput || "Waiting for input…\n\nClick 'Process JSON' to view formatted payload."}
+                </div>
+              </div>
+            </section>
+          </div>
+        );
+
+      case "JSON to TS":
+        return (
+          <div className="tool-workspace">
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <div className="panel-title">JSON Payload</div>
+                  <div className="panel-subtitle">Paste JSON to convert into TypeScript interfaces.</div>
+                </div>
+                <span className="pill">TYPESCRIPT</span>
+              </div>
+              <div className="panel-body field-stack">
+                <div>
+                  <label className="field-label">Root Interface / Type Name</label>
+                  <input className="field" value={jsonTsRootName} onChange={(e) => setJsonTsRootName(e.target.value)} placeholder="RootConfig" />
+                </div>
+                <textarea className="textarea" value={jsonTsInput} onChange={(e) => setJsonTsInput(e.target.value)} spellCheck={false} placeholder="Paste JSON here..." />
+                <div className="row-wrap">
+                  <button className="btn btn-primary" onClick={runJsonToTs}><CodeXml size={14} /> Generate TypeScript Interfaces</button>
+                  <button className="btn" onClick={() => { setJsonTsInput(""); setJsonTsOutput(""); }}>Clear</button>
+                </div>
+              </div>
+            </section>
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <div className="panel-title">TypeScript Definitions</div>
+                  <div className="panel-subtitle">Strict TypeScript code output</div>
+                </div>
+                <button className="btn" onClick={() => copyText(jsonTsOutput)}><Copy size={13} /> Copy Types</button>
+              </div>
+              <div className="panel-body">
+                <div className="result-box code-output" style={{ minHeight: 280 }}>
+                  {jsonTsOutput || "Click 'Generate TypeScript Interfaces' to convert."}
                 </div>
               </div>
             </section>
@@ -732,7 +912,7 @@ export default function DevHub() {
               <div className="panel-head">
                 <div>
                   <div className="panel-title">Base64 Input</div>
-                  <div className="panel-subtitle">UTF-8 encoded string or Base64 payload.</div>
+                  <div className="panel-subtitle">UTF-8 safe encoder / decoder with emoji and symbol support.</div>
                 </div>
                 <span className="pill">{base64Mode.toUpperCase()}</span>
               </div>
@@ -818,6 +998,66 @@ export default function DevHub() {
           </section>
         );
 
+      case "Password Gen":
+        return (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <div className="panel-title">Password & Secret Token Generator</div>
+                <div className="panel-subtitle">Generate high-entropy credentials, tokens, and keys with instant strength evaluation.</div>
+              </div>
+              <span className="pill">ENTROPY</span>
+            </div>
+            <div className="panel-body field-stack">
+              <div className="row-wrap" style={{ gap: 16 }}>
+                <div>
+                  <label className="field-label">Length (4–128 characters)</label>
+                  <input className="field" type="number" min="4" max="128" style={{ width: 120 }} value={passLength} onChange={(e) => setPassLength(e.target.value)} />
+                </div>
+                <div style={{ display: "flex", gap: 16, alignItems: "center", paddingTop: 18, flexWrap: "wrap" }}>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passUpper} onChange={(e) => setPassUpper(e.target.checked)} />
+                    Uppercase (A-Z)
+                  </label>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passLower} onChange={(e) => setPassLower(e.target.checked)} />
+                    Lowercase (a-z)
+                  </label>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passNumbers} onChange={(e) => setPassNumbers(e.target.checked)} />
+                    Numbers (0-9)
+                  </label>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passSymbols} onChange={(e) => setPassSymbols(e.target.checked)} />
+                    Symbols (!@#$%)
+                  </label>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passAvoidAmbiguous} onChange={(e) => setPassAvoidAmbiguous(e.target.checked)} />
+                    Avoid Ambiguous (0, O, I, l, 1)
+                  </label>
+                </div>
+              </div>
+              <div className="row-wrap">
+                <button className="btn btn-primary" onClick={runPasswordGenerator}><KeyRound size={14} /> Generate Password</button>
+                {passResult && <button className="btn" onClick={() => copyText(passResult.password)}><Copy size={13} /> Copy Password</button>}
+              </div>
+              {passResult && (
+                <div className="field-stack" style={{ marginTop: 10 }}>
+                  <div className="result-box code-output" style={{ fontSize: 14, fontWeight: "bold" }}>
+                    {passResult.password}
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>Entropy Score:</span>
+                    <strong style={{ color: passResult.entropyBits > 80 ? "var(--green)" : passResult.entropyBits > 50 ? "#ffd666" : "#ff8b8b" }}>
+                      {passResult.entropyBits} bits ({passResult.entropyBits > 80 ? "Fort Knox" : passResult.entropyBits > 50 ? "Strong" : "Weak"})
+                    </strong>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        );
+
       case "Regex Tester":
         return (
           <div className="tool-workspace">
@@ -832,10 +1072,11 @@ export default function DevHub() {
               <div className="panel-body field-stack">
                 <div className="row-wrap" style={{ marginBottom: 4 }}>
                   <span style={{ fontSize: 10, color: "var(--muted)" }}>Presets:</span>
-                  <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => applyRegexPreset("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "Email")}>Email</button>
-                  <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => applyRegexPreset("https?:\\/\\/(www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_\\+.~#?&//=]*)", "URL")}>URL</button>
-                  <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => applyRegexPreset("\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b", "IPv4")}>IPv4</button>
-                  <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => applyRegexPreset("#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})", "Hex Color")}>Hex Color</button>
+                  <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setPattern("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"); notify("Email preset loaded"); }}>Email</button>
+                  <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setPattern("https?:\\/\\/(www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_\\+.~#?&//=]*)"); notify("URL preset loaded"); }}>URL</button>
+                  <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setPattern("\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b"); notify("IPv4 preset loaded"); }}>IPv4</button>
+                  <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setPattern("#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})"); notify("Hex color preset loaded"); }}>Hex Color</button>
+                  <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setPattern("^[a-z0-9]+(?:-[a-z0-9]+)*$"); notify("Slug preset loaded"); }}>Slug</button>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 90px", gap: 10 }}>
                   <div>
@@ -883,7 +1124,7 @@ export default function DevHub() {
                 <div className="panel-title">Unix Timestamp Converter</div>
                 <div className="panel-subtitle">Epoch seconds and milliseconds to ISO 8601, UTC, and local time.</div>
               </div>
-              <span className="pill">EPOCH TIME</span>
+              <span className="pill">LIVE: {currentTime}</span>
             </div>
             <div className="panel-body field-stack">
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -896,20 +1137,140 @@ export default function DevHub() {
                       const now = String(Math.floor(Date.now() / 1000));
                       setTimestampInput(now);
                       notify("Loaded current timestamp");
-                    }}>Use Current Time</button>
+                    }}><RefreshCw size={12} /> Use Current Time</button>
                   </div>
                 </div>
                 <div>
                   <label className="field-label">Or Convert Date / Time to Timestamp</label>
                   <input className="field" type="datetime-local" value={dateInput} onChange={(e) => setDateInput(e.target.value)} />
                   <div className="row-wrap" style={{ marginTop: 10 }}>
-                    <button className="btn" onClick={convertDateToTimestamp}>Convert Date to Epoch</button>
+                    <button className="btn" onClick={() => {
+                      try {
+                        if (!dateInput) throw new Error("Select or enter a date string.");
+                        const d = new Date(dateInput);
+                        if (Number.isNaN(d.getTime())) throw new Error("Invalid date format.");
+                        setTimestampInput(String(Math.floor(d.getTime() / 1000)));
+                        notify("Timestamp updated from date");
+                      } catch (err) {
+                        notify(err instanceof Error ? err.message : "Invalid date");
+                      }
+                    }}>Convert Date to Epoch</button>
                   </div>
                 </div>
               </div>
               <div className="result-box code-output" style={{ minHeight: 120 }}>
                 {timestampOutput || "Converted dates and relative time will appear here."}
               </div>
+            </div>
+          </section>
+        );
+
+      case "Cron Parser":
+        return (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <div className="panel-title">Cron Expression Parser & Explainer</div>
+                <div className="panel-subtitle">Parse 5-part cron syntax and calculate upcoming trigger dates.</div>
+              </div>
+              <span className="pill">CRONTAB</span>
+            </div>
+            <div className="panel-body field-stack">
+              <div className="row-wrap">
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>Quick presets:</span>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => setCronInput("*/5 * * * *")}>Every 5 mins</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => setCronInput("0 * * * *")}>Hourly</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => setCronInput("0 0 * * *")}>Daily at midnight</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => setCronInput("0 9 * * 1")}>Mondays at 9 AM</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => setCronInput("0 0 1 * *")}>1st of every month</button>
+              </div>
+              <div>
+                <label className="field-label">Cron Expression (minute hour day-of-month month day-of-week)</label>
+                <input className="field" style={{ fontSize: 14, fontFamily: "monospace" }} value={cronInput} onChange={(e) => setCronInput(e.target.value)} placeholder="* * * * *" />
+              </div>
+              <div className="row-wrap">
+                <button className="btn btn-primary" onClick={runCron}><CalendarClock size={14} /> Explain Cron Expression</button>
+              </div>
+              {cronResult && (
+                <div className="field-stack" style={{ marginTop: 10 }}>
+                  {cronResult.error ? (
+                    <div className="result-box error">{cronResult.error}</div>
+                  ) : (
+                    <>
+                      <div className="panel" style={{ padding: 14, background: "#111b15" }}>
+                        <div className="field-label">Human-Readable Meaning:</div>
+                        <div style={{ fontSize: 15, fontWeight: "bold", color: "var(--green)" }}>{cronResult.explanation}</div>
+                      </div>
+                      <div>
+                        <div className="field-label">Next 5 Calculated Execution Times:</div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          {cronResult.nextRuns.map((run, idx) => (
+                            <div key={idx} style={{ padding: "6px 12px", background: "#0c130f", border: "1px solid var(--line)", borderRadius: 6, fontSize: 11, display: "flex", gap: 10 }}>
+                              <span style={{ color: "var(--muted)", width: 24 }}>#{idx + 1}</span>
+                              <strong style={{ color: "var(--text)" }}>{run}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        );
+
+      case "Base Converter":
+        return (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <div className="panel-title">Number Base Converter</div>
+                <div className="panel-subtitle">Simultaneous live converter across Decimal, Hexadecimal, Binary, and Octal.</div>
+              </div>
+              <span className="pill">RADIX</span>
+            </div>
+            <div className="panel-body field-stack">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
+                <div>
+                  <label className="field-label">Input Number</label>
+                  <input className="field" value={baseInputVal} onChange={(e) => runNumberBase(e.target.value, baseFrom)} placeholder="e.g. 255 or 0xFF or 11111111" />
+                </div>
+                <div>
+                  <label className="field-label">Input Base</label>
+                  <select className="select" value={baseFrom} onChange={(e) => runNumberBase(baseInputVal, Number(e.target.value) as 2 | 8 | 10 | 16)}>
+                    <option value={10}>Decimal (10)</option>
+                    <option value={16}>Hexadecimal (16)</option>
+                    <option value={2}>Binary (2)</option>
+                    <option value={8}>Octal (8)</option>
+                  </select>
+                </div>
+              </div>
+
+              {baseResults && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginTop: 10 }}>
+                  <div className="panel" style={{ padding: 14 }}>
+                    <div className="field-label">Decimal (Base 10)</div>
+                    <div style={{ fontSize: 16, fontWeight: "bold", overflowWrap: "anywhere" }}>{baseResults.decimal || "—"}</div>
+                    <button className="btn" style={{ marginTop: 8, padding: "4px 8px", fontSize: 10 }} onClick={() => copyText(baseResults.decimal)}>Copy</button>
+                  </div>
+                  <div className="panel" style={{ padding: 14 }}>
+                    <div className="field-label">Hexadecimal (Base 16)</div>
+                    <div style={{ fontSize: 16, fontWeight: "bold", color: "var(--green)", overflowWrap: "anywhere" }}>{baseResults.hexadecimal || "—"}</div>
+                    <button className="btn" style={{ marginTop: 8, padding: "4px 8px", fontSize: 10 }} onClick={() => copyText(baseResults.hexadecimal)}>Copy</button>
+                  </div>
+                  <div className="panel" style={{ padding: 14 }}>
+                    <div className="field-label">Binary (Base 2)</div>
+                    <div style={{ fontSize: 14, fontFamily: "monospace", overflowWrap: "anywhere" }}>{baseResults.binary || "—"}</div>
+                    <button className="btn" style={{ marginTop: 8, padding: "4px 8px", fontSize: 10 }} onClick={() => copyText(baseResults.binary)}>Copy</button>
+                  </div>
+                  <div className="panel" style={{ padding: 14 }}>
+                    <div className="field-label">Octal (Base 8)</div>
+                    <div style={{ fontSize: 16, fontWeight: "bold", overflowWrap: "anywhere" }}>{baseResults.octal || "—"}</div>
+                    <button className="btn" style={{ marginTop: 8, padding: "4px 8px", fontSize: 10 }} onClick={() => copyText(baseResults.octal)}>Copy</button>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         );
@@ -978,14 +1339,14 @@ export default function DevHub() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <div className="panel-title">Cryptographic Hash & HMAC Generator</div>
-                <div className="panel-subtitle">Compute SHA-256, SHA-512, SHA-1, MD5, and HMAC digests.</div>
+                <div className="panel-title">Cryptographic Hash, HMAC & Checksum Generator</div>
+                <div className="panel-subtitle">Compute SHA-256, SHA-512, SHA-1, MD5, CRC-32, and HMAC digests.</div>
               </div>
               <span className="pill">{hashAlgorithm}</span>
             </div>
             <div className="panel-body field-stack">
               <div className="row-wrap">
-                {(["SHA-256", "SHA-512", "SHA-1", "MD5"] as const).map((algo) => (
+                {(["SHA-256", "SHA-512", "SHA-1", "MD5", "CRC-32"] as const).map((algo) => (
                   <button key={algo} className={`btn ${hashAlgorithm === algo ? "btn-primary" : ""}`} onClick={() => setHashAlgorithm(algo)}>
                     {algo}
                   </button>
@@ -993,17 +1354,38 @@ export default function DevHub() {
               </div>
               <div>
                 <label className="field-label">Text to Hash</label>
-                <textarea className="textarea" style={{ minHeight: 100 }} value={hashInput} onChange={(e) => setHashInput(e.target.value)} />
+                <textarea className="textarea" style={{ minHeight: 90 }} value={hashInput} onChange={(e) => setHashInput(e.target.value)} />
               </div>
-              <div>
-                <label className="field-label">HMAC Secret Key (optional — leaves empty for standard hash)</label>
-                <input className="field" type="password" value={hashKey} onChange={(e) => setHashKey(e.target.value)} placeholder="Enter secret key for HMAC..." />
-              </div>
+              {hashAlgorithm !== "CRC-32" && (
+                <div>
+                  <label className="field-label">HMAC Secret Key (optional — leaves empty for standard hash)</label>
+                  <input className="field" type="password" value={hashKey} onChange={(e) => setHashKey(e.target.value)} placeholder="Enter secret key for HMAC..." />
+                </div>
+              )}
               <div className="row-wrap">
                 <button className="btn btn-primary" onClick={runHash}><Lock size={14} /> Calculate Hash</button>
                 <button className="btn" onClick={() => copyText(hashOutput)}><Copy size={13} /> Copy Hash</button>
               </div>
               <div className="result-box code-output">{hashOutput || "Hash digest appears here."}</div>
+
+              {/* Hash Verification section */}
+              <div style={{ marginTop: 10, padding: 12, border: "1px solid var(--line)", borderRadius: 8, background: "#0c130f" }}>
+                <label className="field-label">Verify against target hash (checksum comparison):</label>
+                <input className="field" value={verifyHashTarget} onChange={(e) => setVerifyHashTarget(e.target.value)} placeholder="Paste expected hash to compare..." />
+                {verifyHashTarget.trim() && hashOutput && (
+                  <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+                    {hashOutput.toLowerCase() === verifyHashTarget.trim().toLowerCase() ? (
+                      <span style={{ color: "var(--green)", fontWeight: "bold", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        <CheckCheck size={16} /> Checksum Verified (Exact Match)
+                      </span>
+                    ) : (
+                      <span style={{ color: "#ff8b8b", fontWeight: "bold" }}>
+                        ✗ Checksum Mismatch
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
         );
@@ -1014,10 +1396,10 @@ export default function DevHub() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <div className="panel-title">URL String</div>
-                  <div className="panel-subtitle">Encode, decode, or break down URL parameters.</div>
+                  <div className="panel-title">URL / Text Input</div>
+                  <div className="panel-subtitle">Encode, decode URLs, parse query params, or convert HTML entities.</div>
                 </div>
-                <span className="pill">HTTP URI</span>
+                <span className="pill">WEB ENCODING</span>
               </div>
               <div className="panel-body field-stack">
                 <textarea className="textarea" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="https://example.com/api?key=val" />
@@ -1025,6 +1407,8 @@ export default function DevHub() {
                   <button className="btn btn-primary" onClick={() => runUrlCodec("parse")}><Globe size={14} /> Parse URL</button>
                   <button className="btn" onClick={() => runUrlCodec("encode")}>URL Encode</button>
                   <button className="btn" onClick={() => runUrlCodec("decode")}>URL Decode</button>
+                  <button className="btn" onClick={() => runUrlCodec("html_encode")}>HTML Entities Encode</button>
+                  <button className="btn" onClick={() => runUrlCodec("html_decode")}>HTML Entities Decode</button>
                   <button className="btn" onClick={() => { setUrlInput(""); setUrlOutput(""); setParsedUrl(null); }}>Clear</button>
                 </div>
               </div>
@@ -1032,7 +1416,7 @@ export default function DevHub() {
             <section className="panel">
               <div className="panel-head">
                 <div>
-                  <div className="panel-title">Parsed Query Parameters</div>
+                  <div className="panel-title">Parsed Output</div>
                   <div className="panel-subtitle">{parsedUrl ? `${parsedUrl.params.length} parameters` : "Details"}</div>
                 </div>
                 <button className="btn" onClick={() => copyText(urlOutput)}><Copy size={13} /> Copy Output</button>
@@ -1056,7 +1440,7 @@ export default function DevHub() {
                     )}
                   </>
                 ) : (
-                  <div className="result-box code-output">{urlOutput || "Click 'Parse URL' or 'URL Encode' to inspect."}</div>
+                  <div className="result-box code-output">{urlOutput || "Click 'Parse URL', 'URL Encode', or 'HTML Entities Encode'."}</div>
                 )}
               </div>
             </section>
@@ -1279,10 +1663,27 @@ export default function DevHub() {
               <div className="panel-head">
                 <div>
                   <div className="panel-title">HTTP Request</div>
-                  <div className="panel-subtitle">Compose requests with custom methods, headers, and body.</div>
+                  <div className="panel-subtitle">Test APIs via Safe Proxy or Direct Browser Fetch.</div>
                 </div>
                 <div className="row-wrap">
-                  <button className="btn" onClick={generateCurl}><Terminal size={12} /> Copy as cURL</button>
+                  <div style={{ display: "inline-flex", background: "#111a14", borderRadius: 6, border: "1px solid var(--line)", padding: 2 }}>
+                    <button
+                      className={`btn ${apiExecutionMode === "proxy" ? "btn-primary" : ""}`}
+                      style={{ padding: "3px 8px", fontSize: 10, border: "none" }}
+                      onClick={() => setApiExecutionMode("proxy")}
+                    >
+                      Safe Proxy
+                    </button>
+                    <button
+                      className={`btn ${apiExecutionMode === "direct" ? "btn-primary" : ""}`}
+                      style={{ padding: "3px 8px", fontSize: 10, border: "none" }}
+                      onClick={() => setApiExecutionMode("direct")}
+                      title="Direct browser fetch (CORS)"
+                    >
+                      Direct Fetch (CORS)
+                    </button>
+                  </div>
+                  <button className="btn" onClick={generateCurl}><Terminal size={12} /> cURL</button>
                 </div>
               </div>
               <div className="panel-body field-stack">
@@ -1305,6 +1706,9 @@ export default function DevHub() {
                   </button>
                   <button className={`tab-btn ${apiActiveTab === "body" ? "active" : ""}`} onClick={() => setApiActiveTab("body")}>
                     Body {["POST", "PUT", "PATCH"].includes(apiMethod) ? "●" : ""}
+                  </button>
+                  <button className={`tab-btn ${apiActiveTab === "import" ? "active" : ""}`} onClick={() => setApiActiveTab("import")}>
+                    Import cURL
                   </button>
                 </div>
 
@@ -1352,6 +1756,13 @@ export default function DevHub() {
                   </div>
                 )}
 
+                {apiActiveTab === "import" && (
+                  <div className="field-stack">
+                    <textarea className="textarea" style={{ minHeight: 110 }} value={apiCurlImport} onChange={(e) => setApiCurlImport(e.target.value)} placeholder="Paste curl command here (e.g. curl -X POST 'https://api...' -H 'Content-Type: application/json' -d '{...}')" />
+                    <button className="btn btn-primary" onClick={importCurlCommand}><DownloadCloud size={14} /> Parse & Apply cURL</button>
+                  </div>
+                )}
+
                 <div className="row-wrap">
                   <button className="btn btn-primary" disabled={apiBusy || !apiUrl.trim()} onClick={sendApiRequest}>
                     {apiBusy ? <Activity size={14} /> : <Send size={14} />}
@@ -1359,7 +1770,9 @@ export default function DevHub() {
                   </button>
                 </div>
                 <p className="notice">
-                  Safe demo proxy supports JSONPlaceholder, HttpBin, GitHub, ReqRes, DummyJSON, PokeAPI, and localhost.
+                  {apiExecutionMode === "proxy"
+                    ? "Safe proxy allowlists: jsonplaceholder, httpbin, dummyjson, reqres, pokeapi, catfact, github, localhost."
+                    : "Direct Fetch mode sends request straight from your browser. Allows any local or remote CORS-enabled endpoint."}
                 </p>
               </div>
             </section>
@@ -1399,7 +1812,7 @@ export default function DevHub() {
                 {apiHistory.length > 0 && (
                   <div>
                     <div className="field-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <History size={12} /> Recent Requests
+                      <History size={12} /> Recent Requests ({apiHistory.length})
                     </div>
                     <div style={{ display: "grid", gap: 6 }}>
                       {apiHistory.slice(0, 4).map((h) => (
@@ -1627,8 +2040,8 @@ export default function DevHub() {
           <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8 }}>
             <span className="status-dot" />All systems operational
           </div>
-          <div className="notice">15 developer utilities · Web Crypto ready</div>
-          <div className="notice" style={{ marginTop: 10 }}>DEVHUB <span style={{ color: "#a1ffb4" }}>v2.0.0</span></div>
+          <div className="notice">{tools.length} developer utilities · Web Crypto ready</div>
+          <div className="notice" style={{ marginTop: 10 }}>DEVHUB <span style={{ color: "#a1ffb4" }}>v2.2.0</span></div>
         </div>
       </aside>
 
@@ -1645,6 +2058,9 @@ export default function DevHub() {
           </div>
 
           <div className="top-actions">
+            <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "monospace", marginRight: 6 }}>
+              {currentTime}
+            </div>
             <button className="kbd" style={{ cursor: "pointer", background: "#111a14" }} onClick={() => setCmdOpen(true)}>
               <Command size={10} style={{ display: "inline" }} /> K Search Tools
             </button>
@@ -1672,7 +2088,7 @@ export default function DevHub() {
                   <div className="eyebrow"><span className="status-dot" /> DEVELOPER COMMAND CENTER</div>
                   <h1>Build faster.<br /><span className="accent">Ship smarter.</span></h1>
                   <p className="subtitle">
-                    An all-in-one dark terminal developer suite with 15 essential utilities: format payloads, generate cryptographic IDs, inspect JWTs, test regular expressions, interact with REST APIs, and chat with your AI copilot.
+                    An all-in-one dark terminal developer suite with {tools.length} utilities: format payloads, generate TypeScript types, inspect JWTs, test regular expressions, interact with REST APIs, and chat with your AI copilot.
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1694,8 +2110,8 @@ export default function DevHub() {
                 </div>
                 <div className="panel stat">
                   <div className="stat-top"><span>API WORKSPACE</span><Workflow size={15} color="#7cff9b" /></div>
-                  <div className="stat-value" style={{ fontSize: 20 }}>REST Client</div>
-                  <div className="stat-foot">Headers, body, cURL generator</div>
+                  <div className="stat-value" style={{ fontSize: 20 }}>Dual Mode</div>
+                  <div className="stat-foot">Safe Proxy & Direct CORS Fetch</div>
                 </div>
                 <div className="panel stat">
                   <div className="stat-top"><span>AI COPILOT</span><Sparkles size={15} color="#7cff9b" /></div>
@@ -1730,7 +2146,7 @@ export default function DevHub() {
                 <div className="panel-body">
                   <div style={{ position: "relative", marginBottom: 14 }}>
                     <Search size={14} style={{ position: "absolute", top: 12, left: 12, color: "#7c8d82" }} />
-                    <input className="field" style={{ paddingLeft: 36 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter tools by name, tag, or description… (e.g. JWT, Base64, UUID, Regex)" />
+                    <input className="field" style={{ paddingLeft: 36 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter tools by name, tag, or description… (e.g. JSON to TS, Cron, Password, JWT, Regex)" />
                   </div>
                   <div className="tool-grid">
                     {filteredTools.map(toolCard)}
@@ -1776,38 +2192,59 @@ export default function DevHub() {
               <input
                 className="cmd-input"
                 autoFocus
-                placeholder="Type a tool name or command... (e.g. JSON, JWT, API, Diff)"
+                placeholder="Type a tool name or command... (e.g. JSON, TS, Cron, JWT, API, Diff)"
                 value={cmdSearch}
-                onChange={(e) => setCmdSearch(e.target.value)}
+                onChange={(e) => {
+                  setCmdSearch(e.target.value);
+                  setCmdSelectedIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setCmdSelectedIndex((prev) => Math.min(prev + 1, cmdFilteredTools.length - 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setCmdSelectedIndex((prev) => Math.max(prev - 1, 0));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (cmdFilteredTools[cmdSelectedIndex]) {
+                      setView(cmdFilteredTools[cmdSelectedIndex].name);
+                      setCmdOpen(false);
+                    }
+                  }
+                }}
               />
               <span className="kbd" style={{ fontSize: 9 }}>ESC</span>
             </div>
             <div className="cmd-list">
-              {tools
-                .filter((t) => (t.name + " " + t.description + " " + t.tag).toLowerCase().includes(cmdSearch.toLowerCase()))
-                .map((tool) => {
-                  const Icon = tool.icon;
-                  return (
-                    <button
-                      key={tool.name}
-                      className="cmd-item"
-                      onClick={() => {
-                        setView(tool.name);
-                        setCmdOpen(false);
-                      }}
-                    >
-                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                        <Icon size={14} style={{ color: "var(--green)" }} />
-                        <span>{tool.name}</span>
-                        <span style={{ color: "var(--muted)", fontSize: 10 }}>— {tool.description}</span>
-                      </div>
-                      <ChevronRight size={13} style={{ color: "#486250" }} />
-                    </button>
-                  );
-                })}
+              {cmdFilteredTools.map((tool, idx) => {
+                const Icon = tool.icon;
+                return (
+                  <button
+                    key={tool.name}
+                    className={`cmd-item ${idx === cmdSelectedIndex ? "selected" : ""}`}
+                    onClick={() => {
+                      setView(tool.name);
+                      setCmdOpen(false);
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <Icon size={14} style={{ color: "var(--green)" }} />
+                      <span>{tool.name}</span>
+                      <span style={{ color: "var(--muted)", fontSize: 10 }}>— {tool.description}</span>
+                    </div>
+                    <ChevronRight size={13} style={{ color: "#486250" }} />
+                  </button>
+                );
+              })}
+              {cmdFilteredTools.length === 0 && (
+                <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12 }}>
+                  No tools found matching &quot;{cmdSearch}&quot;.
+                </div>
+              )}
               <div style={{ padding: "8px 12px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "space-between", color: "#617067", fontSize: 10 }}>
-                <span>Navigation: Click or Enter</span>
-                <span>DevHub v2.0</span>
+                <span>Use ↑↓ arrows to navigate, Enter to select</span>
+                <span>DevHub v2.2</span>
               </div>
             </div>
           </div>

@@ -97,15 +97,9 @@ export default function DevHub() {
   const [cmdSelectedIndex, setCmdSelectedIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState("");
 
-  const [favorites, setFavorites] = useState<string[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("devhub_favorites");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return ["JSON Formatter", "API Workspace", "AI Assistant", "JSON to TS"];
-  });
+  // Persisted favorites are loaded on the client after hydration to avoid
+  // server/client markup mismatches during SSR hydration.
+  const [favorites, setFavorites] = useState<string[]>([]);
 
   // --- JSON Formatter State ---
   const [jsonInput, setJsonInput] = useState(starterJson);
@@ -149,7 +143,9 @@ export default function DevHub() {
   const [regexMatches, setRegexMatches] = useState<Array<{ match: string; index: number; groups: string[] }>>([]);
 
   // --- Timestamp State ---
-  const [timestampInput, setTimestampInput] = useState(() => String(Math.floor(Date.now() / 1000)));
+  // Timestamp input is populated on the client after mount to keep server
+  // rendered HTML stable across environments.
+  const [timestampInput, setTimestampInput] = useState("");
   const [dateInput, setDateInput] = useState("");
   const [timestampOutput, setTimestampOutput] = useState("");
 
@@ -228,26 +224,10 @@ export default function DevHub() {
     error?: string;
   } | null>(null);
   const [apiBusy, setApiBusy] = useState(false);
-  const [apiHistory, setApiHistory] = useState<ApiHistoryItem[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("devhub_api_history");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return [];
-  });
+  const [apiHistory, setApiHistory] = useState<ApiHistoryItem[]>([]);
 
   // --- AI Assistant State ---
-  const [aiApiKey, setAiApiKey] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("devhub_ai_key");
-        if (saved) return saved;
-      } catch {}
-    }
-    return "";
-  });
+  const [aiApiKey, setAiApiKey] = useState<string>("");
   const [aiShowSettings, setAiShowSettings] = useState(false);
   const [aiModel, setAiModel] = useState("gpt-4o-mini");
   const [aiInput, setAiInput] = useState("");
@@ -293,6 +273,33 @@ export default function DevHub() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Load persisted client-only state after mount to avoid SSR/CSR hydration mismatches.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("devhub_favorites");
+      if (saved) {
+        setFavorites(JSON.parse(saved));
+      } else {
+        setFavorites(["JSON Formatter", "API Workspace", "AI Assistant", "JSON to TS"]);
+      }
+    } catch {}
+
+    try {
+      const savedHistory = localStorage.getItem("devhub_api_history");
+      if (savedHistory) setApiHistory(JSON.parse(savedHistory));
+    } catch {}
+
+    try {
+      const savedKey = localStorage.getItem("devhub_ai_key");
+      if (savedKey) setAiApiKey(savedKey);
+    } catch {}
+
+    // Initialize timestamp input on client after mount
+    try {
+      if (!timestampInput) setTimestampInput(String(Math.floor(Date.now() / 1000)));
+    } catch {}
   }, []);
 
   const toggleFavorite = (toolName: string) => {

@@ -6,23 +6,34 @@ import {
   FileJson, Hash, LayoutDashboard, Menu, Regex, Search, Send,
   Sparkles, Terminal, WandSparkles, Workflow, Zap, Key, Lock, Globe, Split,
   Palette, Database, FileText, Code2, History, RotateCcw, X, Star,
-  SlidersHorizontal, ChevronRight
+  SlidersHorizontal, ChevronRight, Calendar, Code, ShieldCheck, Sliders, Ruler,
+  HelpCircle, FileCode2, Download
 } from "lucide-react";
 import {
   computeHash, computeLineDiff, decodeJwt, formatSql, generateNanoId,
-  generateUlid, generateUuidV7, type DecodedJwt, type DiffLine
+  generateUlid, generateUuidV7, type DecodedJwt, type DiffLine,
+  jsonToTypeScript, parseCron, encodeHtml, decodeHtml, unicodeEscape,
+  unicodeUnescape, generatePassword, calculateChmod, convertCssUnits,
+  generateCssClamp, HTTP_STATUS_CODES, type ChmodPerms
 } from "@/lib/utils";
 
 type View =
   | "Overview"
   | "JSON Formatter"
+  | "JSON to TS"
   | "Base64 Codec"
+  | "HTML Codec"
   | "UUID Generator"
+  | "Password Gen"
   | "Regex Tester"
   | "Timestamp Converter"
+  | "Cron Parser"
   | "JWT Debugger"
   | "Hash Generator"
+  | "Chmod Calculator"
   | "URL Codec"
+  | "CSS Units"
+  | "HTTP Status Codes"
   | "Diff Checker"
   | "Color Converter"
   | "SQL Formatter"
@@ -42,24 +53,38 @@ type Tool = {
 };
 
 const tools: Tool[] = [
+  // Format & Convert
   { name: "JSON Formatter", description: "Format, validate, sort keys, and minify JSON payloads.", icon: FileJson, tag: "FORMAT", category: "Format & Convert" },
+  { name: "JSON to TS", description: "Generate TypeScript types and interfaces from JSON.", icon: FileCode2, tag: "TYPES", category: "Format & Convert" },
   { name: "Base64 Codec", description: "Encode or decode text with Base64 & URL-safe support.", icon: ArrowDownToLine, tag: "ENCODE", category: "Format & Convert" },
-  { name: "UUID Generator", description: "Generate v4, v7 (timestamp-ordered), NanoID, or ULIDs.", icon: Hash, tag: "GENERATE", category: "Security" },
-  { name: "Regex Tester", description: "Test regular expressions with groups, replacement, and cheat sheets.", icon: Regex, tag: "TEST", category: "Text" },
+  { name: "HTML Codec", description: "Encode/decode HTML entities, unicode escapes, and special chars.", icon: Code, tag: "HTML", category: "Format & Convert" },
   { name: "Timestamp Converter", description: "Convert Unix epoch to readable dates and relative time.", icon: Clock3, tag: "CONVERT", category: "Format & Convert" },
+  { name: "Color Converter", description: "Convert HEX, RGB, HSL color codes with live swatch.", icon: Palette, tag: "COLOR", category: "Format & Convert" },
+  { name: "CSS Units", description: "Convert px, rem, em and generate fluid responsive CSS clamp().", icon: Ruler, tag: "CSS", category: "Format & Convert" },
+  { name: "SQL Formatter", description: "Format SQL queries with uppercase keywords & indentation.", icon: Database, tag: "SQL", category: "Format & Convert" },
+
+  // Security & Auth
+  { name: "UUID Generator", description: "Generate v4, v7 (timestamp-ordered), NanoID, or ULIDs.", icon: Hash, tag: "GENERATE", category: "Security" },
+  { name: "Password Gen", description: "Create cryptographic passwords with real-time entropy calculation.", icon: ShieldCheck, tag: "PASS", category: "Security" },
   { name: "JWT Debugger", description: "Decode and inspect JSON Web Tokens, headers, and expiry.", icon: Key, tag: "AUTH", category: "Security" },
   { name: "Hash Generator", description: "Compute SHA-256, SHA-512, SHA-1, MD5, and HMAC hashes.", icon: Lock, tag: "CRYPTO", category: "Security" },
+  { name: "Chmod Calculator", description: "Interactive Linux file permissions & octal chmod generator.", icon: Sliders, tag: "LINUX", category: "Security" },
+
+  // Network & Web
+  { name: "API Workspace", description: "Full REST client with env variables, headers, body, cURL generator.", icon: Workflow, tag: "API", category: "Workspace" },
   { name: "URL Codec", description: "Encode/decode URLs and inspect query parameters.", icon: Globe, tag: "URL", category: "Network" },
+  { name: "HTTP Status Codes", description: "Quick lookup for all standard HTTP status codes and debugging info.", icon: HelpCircle, tag: "HTTP", category: "Network" },
+
+  // Text & Workspace
+  { name: "Regex Tester", description: "Test regular expressions with groups, replacement, and cheat sheets.", icon: Regex, tag: "TEST", category: "Text" },
   { name: "Diff Checker", description: "Compare two text or code snippets line by line.", icon: Split, tag: "DIFF", category: "Text" },
-  { name: "Color Converter", description: "Convert HEX, RGB, HSL color codes with live swatch.", icon: Palette, tag: "COLOR", category: "Format & Convert" },
-  { name: "SQL Formatter", description: "Format SQL queries with uppercase keywords & indentation.", icon: Database, tag: "SQL", category: "Format & Convert" },
   { name: "Markdown Preview", description: "Live split-pane markdown editor with preview & HTML export.", icon: FileText, tag: "MARKDOWN", category: "Text" },
   { name: "Lorem Generator", description: "Generate placeholder text, sentences, or mock JSON profiles.", icon: Code2, tag: "MOCK", category: "Text" },
-  { name: "API Workspace", description: "Full HTTP client with headers, body, cURL generator, and latency.", icon: Workflow, tag: "API", category: "Workspace" },
+  { name: "Cron Parser", description: "Parse and explain cron expressions with next upcoming run times.", icon: Calendar, tag: "CRON", category: "Workspace" },
   { name: "AI Assistant", description: "Engineering copilot for code debugging, architecture, and tests.", icon: Sparkles, tag: "AI", category: "Workspace" },
 ];
 
-const starterJson = '{\n  "name": "DevHub",\n  "version": "1.0.0",\n  "status": "ready",\n  "features": ["tools", "api-workspace", "ai-assistant"]\n}';
+const starterJson = '{\n  "name": "DevHub",\n  "version": "2.1.0",\n  "status": "ready",\n  "features": ["tools", "api-workspace", "ai-assistant"]\n}';
 
 type ApiHistoryItem = {
   id: string;
@@ -90,7 +115,7 @@ export default function DevHub() {
         if (saved) return JSON.parse(saved);
       } catch {}
     }
-    return ["JSON Formatter", "API Workspace", "AI Assistant"];
+    return ["JSON Formatter", "JSON to TS", "API Workspace", "AI Assistant"];
   });
 
   // --- JSON Formatter State ---
@@ -99,11 +124,21 @@ export default function DevHub() {
   const [jsonMode, setJsonMode] = useState<"pretty" | "minify">("pretty");
   const [jsonStats, setJsonStats] = useState<{ keys: number; bytes: number } | null>(null);
 
+  // --- JSON to TypeScript State ---
+  const [jsonToTsInput, setJsonToTsInput] = useState('{\n  "id": 101,\n  "username": "alex_dev",\n  "profile": {\n    "name": "Alex Developer",\n    "verified": true,\n    "rating": 4.95\n  },\n  "roles": ["admin", "maintainer"],\n  "tags": [1, 2, 3]\n}');
+  const [jsonToTsRoot, setJsonToTsRoot] = useState("UserProfile");
+  const [jsonToTsOutput, setJsonToTsOutput] = useState("");
+
   // --- Base64 State ---
   const [base64Input, setBase64Input] = useState("Hello, DevHub Developer Workspace!");
   const [base64Output, setBase64Output] = useState("");
   const [base64Mode, setBase64Mode] = useState<"encode" | "decode">("encode");
   const [urlSafeBase64, setUrlSafeBase64] = useState(false);
+
+  // --- HTML Codec State ---
+  const [htmlInput, setHtmlInput] = useState("<section class=\"container\">\n  <h1>DevHub &amp; Tools</h1>\n  <p>Cost: &euro;15 &copy; 2026</p>\n</section>");
+  const [htmlCodecMode, setHtmlCodecMode] = useState<"encode_html" | "decode_html" | "escape_unicode" | "unescape_unicode">("encode_html");
+  const [htmlOutput, setHtmlOutput] = useState("");
 
   // --- UUID / ID State ---
   const [uuidType, setUuidType] = useState<"v4" | "v7" | "nanoid" | "ulid">("v4");
@@ -111,6 +146,15 @@ export default function DevHub() {
   const [uuidUppercase, setUuidUppercase] = useState(false);
   const [uuidNoHyphens, setUuidNoHyphens] = useState(false);
   const [uuidOutput, setUuidOutput] = useState("");
+
+  // --- Password Generator State ---
+  const [passLength, setPassLength] = useState("18");
+  const [passLower, setPassLower] = useState(true);
+  const [passUpper, setPassUpper] = useState(true);
+  const [passNumbers, setPassNumbers] = useState(true);
+  const [passSymbols, setPassSymbols] = useState(true);
+  const [passNoAmbiguous, setPassNoAmbiguous] = useState(false);
+  const [passResult, setPassResult] = useState<{ password: string; entropy: number; strength: "Weak" | "Fair" | "Good" | "Strong"; crackTime: string } | null>(null);
 
   // --- Regex Tester State ---
   const [pattern, setPattern] = useState("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
@@ -125,6 +169,10 @@ export default function DevHub() {
   const [dateInput, setDateInput] = useState("");
   const [timestampOutput, setTimestampOutput] = useState("");
 
+  // --- Cron Parser State ---
+  const [cronInput, setCronInput] = useState("*/15 9-18 * * 1-5");
+  const [cronInfo, setCronInfo] = useState<{ description: string; nextRuns: string[]; valid: boolean; error?: string } | null>(() => parseCron("*/15 9-18 * * 1-5"));
+
   // --- JWT Debugger State ---
   const [jwtToken, setJwtToken] = useState(
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFsZXggRGV2ZWxvcGVyIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMiwiZXhwIjoxODMxNjIzOTAyfQ.signature"
@@ -136,6 +184,18 @@ export default function DevHub() {
   const [hashAlgorithm, setHashAlgorithm] = useState<"SHA-256" | "SHA-512" | "SHA-1" | "MD5">("SHA-256");
   const [hashKey, setHashKey] = useState("");
   const [hashOutput, setHashOutput] = useState("");
+
+  // --- Chmod Calculator State ---
+  const [chmodPerms, setChmodPerms] = useState<ChmodPerms>({
+    owner: { r: true, w: true, x: true },
+    group: { r: true, w: false, x: true },
+    others: { r: true, w: false, x: true },
+  });
+  const [chmodResult, setChmodResult] = useState(() => calculateChmod({
+    owner: { r: true, w: true, x: true },
+    group: { r: true, w: false, x: true },
+    others: { r: true, w: false, x: true },
+  }));
 
   // --- URL Codec & Query Parser State ---
   const [urlInput, setUrlInput] = useState("https://api.example.com/v1/search?query=react+nextjs&limit=25&sort=desc#results");
@@ -149,9 +209,22 @@ export default function DevHub() {
     params: Array<{ key: string; value: string }>;
   } | null>(null);
 
+  // --- CSS Units State ---
+  const [cssVal, setCssVal] = useState("24");
+  const [cssFrom, setCssFrom] = useState<"px" | "rem" | "em">("px");
+  const [cssBase, setCssBase] = useState("16");
+  const [cssRes, setCssRes] = useState<{ px: number; rem: number; em: number } | null>(() => convertCssUnits(24, "px", 16));
+  const [clampMin, setClampMin] = useState("16");
+  const [clampMax, setClampMax] = useState("32");
+  const [clampRes, setClampRes] = useState(() => generateCssClamp(16, 32));
+
+  // --- HTTP Status Codes State ---
+  const [httpSearch, setHttpSearch] = useState("");
+  const [httpCategory, setHttpCategory] = useState<"All" | "1xx" | "2xx" | "3xx" | "4xx" | "5xx">("All");
+
   // --- Diff Checker State ---
-  const [diffOld, setDiffOld] = useState("const version = '1.0.0';\nconsole.log('App starting');\nexport default version;");
-  const [diffNew, setDiffNew] = useState("const version = '2.0.0';\nconsole.log('App starting...');\nconsole.log('Debug mode enabled');\nexport default version;");
+  const [diffOld, setDiffOld] = useState("const version = '2.0.0';\nconsole.log('App starting');\nexport default version;");
+  const [diffNew, setDiffNew] = useState("const version = '2.1.0';\nconsole.log('App starting...');\nconsole.log('22 dev tools active');\nexport default version;");
   const [diffResults, setDiffResults] = useState<DiffLine[]>([]);
 
   // --- Color Converter State ---
@@ -163,7 +236,7 @@ export default function DevHub() {
   const [sqlOutput, setSqlOutput] = useState("");
 
   // --- Markdown Preview State ---
-  const [markdownInput, setMarkdownInput] = useState("# Welcome to DevHub\n\nA **supercharged** dark terminal workspace for developers.\n\n- [x] Fast client-side tools\n- [x] Safe HTTP API workspace\n- [x] AI Engineering Copilot\n\n```ts\nconst greeting = 'Happy Coding!';\nconsole.log(greeting);\n```");
+  const [markdownInput, setMarkdownInput] = useState("# DevHub v2.1.0\n\nA **supercharged** dark terminal workspace for developers.\n\n- [x] 22 Client-side developer tools\n- [x] REST API workspace with environment variables\n- [x] Multi-turn AI Engineering Copilot\n\n```ts\ninterface Developer {\n  name: string;\n  status: 'building';\n}\n```");
 
   // --- Lorem & Mock Data State ---
   const [loremType, setLoremType] = useState<"paragraphs" | "sentences" | "words" | "mock_json">("paragraphs");
@@ -172,12 +245,23 @@ export default function DevHub() {
 
   // --- API Workspace State ---
   const [apiMethod, setApiMethod] = useState("GET");
-  const [apiUrl, setApiUrl] = useState("https://jsonplaceholder.typicode.com/todos/1");
-  const [apiActiveTab, setApiActiveTab] = useState<"params" | "headers" | "body">("headers");
+  const [apiUrl, setApiUrl] = useState("{{baseUrl}}/todos/1");
+  const [apiActiveTab, setApiActiveTab] = useState<"params" | "headers" | "body" | "env">("headers");
   const [apiHeaders, setApiHeaders] = useState<Array<{ key: string; value: string; enabled: boolean }>>([
     { key: "Accept", value: "application/json", enabled: true },
     { key: "Content-Type", value: "application/json", enabled: false },
   ]);
+  const [apiEnvVars, setApiEnvVars] = useState<Array<{ key: string; value: string; enabled: boolean }>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("devhub_api_env");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [
+      { key: "baseUrl", value: "https://jsonplaceholder.typicode.com", enabled: true },
+    ];
+  });
   const [apiBody, setApiBody] = useState('{\n  "title": "New DevHub Task",\n  "completed": false\n}');
   const [apiResult, setApiResult] = useState<{
     status?: number;
@@ -301,6 +385,11 @@ export default function DevHub() {
     }
   };
 
+  const runJsonToTs = () => {
+    const res = jsonToTypeScript(jsonToTsInput, jsonToTsRoot.trim() || "RootObject");
+    setJsonToTsOutput(res);
+  };
+
   const runBase64 = () => {
     try {
       if (base64Mode === "encode") {
@@ -323,6 +412,18 @@ export default function DevHub() {
     }
   };
 
+  const runHtmlCodec = (mode: "encode_html" | "decode_html" | "escape_unicode" | "unescape_unicode") => {
+    setHtmlCodecMode(mode);
+    try {
+      if (mode === "encode_html") setHtmlOutput(encodeHtml(htmlInput));
+      else if (mode === "decode_html") setHtmlOutput(decodeHtml(htmlInput));
+      else if (mode === "escape_unicode") setHtmlOutput(unicodeEscape(htmlInput));
+      else if (mode === "unescape_unicode") setHtmlOutput(unicodeUnescape(htmlInput));
+    } catch (err) {
+      setHtmlOutput(`Codec Error: ${err instanceof Error ? err.message : "Processing failed"}`);
+    }
+  };
+
   const runIdGenerator = () => {
     const count = Math.min(50, Math.max(1, Number(uuidCount) || 1));
     const ids: string[] = [];
@@ -338,6 +439,18 @@ export default function DevHub() {
       ids.push(id);
     }
     setUuidOutput(ids.join("\n"));
+  };
+
+  const runPassGen = () => {
+    const res = generatePassword({
+      length: Number(passLength) || 16,
+      lowercase: passLower,
+      uppercase: passUpper,
+      numbers: passNumbers,
+      symbols: passSymbols,
+      excludeAmbiguous: passNoAmbiguous,
+    });
+    setPassResult(res);
   };
 
   const runRegex = () => {
@@ -407,6 +520,12 @@ export default function DevHub() {
     }
   };
 
+  const runCronParser = (expr?: string) => {
+    const target = expr || cronInput;
+    const res = parseCron(target);
+    setCronInfo(res);
+  };
+
   const runJwt = () => {
     const decoded = decodeJwt(jwtToken);
     setJwtResult(decoded);
@@ -419,6 +538,32 @@ export default function DevHub() {
     } catch (err) {
       setHashOutput(`Hash Error: ${err instanceof Error ? err.message : "Failed to compute hash"}`);
     }
+  };
+
+  const updateChmod = (group: "owner" | "group" | "others", perm: "r" | "w" | "x", val: boolean) => {
+    const next = {
+      ...chmodPerms,
+      [group]: { ...chmodPerms[group], [perm]: val },
+    };
+    setChmodPerms(next);
+    setChmodResult(calculateChmod(next));
+  };
+
+  const applyChmodOctal = (octalStr: string) => {
+    if (!/^[0-7]{3}$/.test(octalStr)) return;
+    const digits = octalStr.split("").map(Number);
+    const parseDigit = (d: number) => ({
+      r: (d & 4) !== 0,
+      w: (d & 2) !== 0,
+      x: (d & 1) !== 0,
+    });
+    const next: ChmodPerms = {
+      owner: parseDigit(digits[0]),
+      group: parseDigit(digits[1]),
+      others: parseDigit(digits[2]),
+    };
+    setChmodPerms(next);
+    setChmodResult(calculateChmod(next));
   };
 
   const runUrlCodec = (action: "encode" | "decode" | "parse") => {
@@ -451,6 +596,18 @@ export default function DevHub() {
     }
   };
 
+  const runCssConvert = () => {
+    const num = Number(cssVal) || 0;
+    const base = Number(cssBase) || 16;
+    setCssRes(convertCssUnits(num, cssFrom, base));
+  };
+
+  const runClampGenerate = () => {
+    const min = Number(clampMin) || 16;
+    const max = Number(clampMax) || 32;
+    setClampRes(generateCssClamp(min, max));
+  };
+
   const runDiff = () => {
     const diff = computeLineDiff(diffOld, diffNew);
     setDiffResults(diff);
@@ -470,7 +627,6 @@ export default function DevHub() {
       const g = parseInt(fullHex.slice(3, 5), 16);
       const b = parseInt(fullHex.slice(5, 7), 16);
 
-      // Convert to HSL
       const rNorm = r / 255;
       const gNorm = g / 255;
       const bNorm = b / 255;
@@ -559,9 +715,19 @@ export default function DevHub() {
     setApiBusy(true);
     setApiResult(null);
 
+    // Variable interpolation
+    let resolvedUrl = apiUrl.trim();
+    apiEnvVars.filter((v) => v.enabled && v.key.trim()).forEach((v) => {
+      resolvedUrl = resolvedUrl.replaceAll(`{{${v.key.trim()}}}`, v.value);
+    });
+
     const headersObj: Record<string, string> = {};
     apiHeaders.filter((h) => h.enabled && h.key.trim()).forEach((h) => {
-      headersObj[h.key.trim()] = h.value;
+      let val = h.value;
+      apiEnvVars.filter((v) => v.enabled && v.key.trim()).forEach((v) => {
+        val = val.replaceAll(`{{${v.key.trim()}}}`, v.value);
+      });
+      headersObj[h.key.trim()] = val;
     });
 
     try {
@@ -569,7 +735,7 @@ export default function DevHub() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: apiUrl.trim(),
+          url: resolvedUrl,
           method: apiMethod,
           headers: headersObj,
           body: ["POST", "PUT", "PATCH"].includes(apiMethod) ? apiBody : undefined,
@@ -596,7 +762,7 @@ export default function DevHub() {
           id: crypto.randomUUID(),
           timestamp: new Date().toLocaleTimeString(),
           method: apiMethod,
-          url: apiUrl,
+          url: resolvedUrl,
           status: resData.status,
           durationMs: resData.durationMs,
         };
@@ -618,7 +784,12 @@ export default function DevHub() {
   };
 
   const generateCurl = () => {
-    let curl = `curl -X ${apiMethod} "${apiUrl}"`;
+    let resolvedUrl = apiUrl.trim();
+    apiEnvVars.filter((v) => v.enabled && v.key.trim()).forEach((v) => {
+      resolvedUrl = resolvedUrl.replaceAll(`{{${v.key.trim()}}}`, v.value);
+    });
+
+    let curl = `curl -X ${apiMethod} "${resolvedUrl}"`;
     apiHeaders.filter((h) => h.enabled && h.key.trim()).forEach((h) => {
       curl += ` \\\n  -H "${h.key.trim()}: ${h.value}"`;
     });
@@ -626,6 +797,13 @@ export default function DevHub() {
       curl += ` \\\n  -d '${apiBody.replace(/'/g, "\\'")}'`;
     }
     copyText(curl);
+  };
+
+  const saveApiEnv = (next: Array<{ key: string; value: string; enabled: boolean }>) => {
+    setApiEnvVars(next);
+    try {
+      localStorage.setItem("devhub_api_env", JSON.stringify(next));
+    } catch {}
   };
 
   // --- AI ASSISTANT EXECUTION ---
@@ -677,6 +855,12 @@ export default function DevHub() {
     } catch {}
   };
 
+  const exportAiChat = () => {
+    if (aiMessages.length === 0) return;
+    const md = aiMessages.map((m) => `### ${m.role === "user" ? "You" : "DevHub AI"}\n\n${m.content}\n`).join("\n---\n\n");
+    copyText(md);
+  };
+
   // --- RENDER TOOLS WORKSPACE ---
   const renderWorkspace = () => {
     switch (view) {
@@ -719,6 +903,48 @@ export default function DevHub() {
               <div className="panel-body">
                 <div className={`result-box ${jsonOutput.startsWith("JSON Error:") ? "error" : "code-output"}`}>
                   {jsonOutput || "Waiting for input…\n\nClick 'Format JSON' to view formatted payload."}
+                </div>
+              </div>
+            </section>
+          </div>
+        );
+
+      case "JSON to TS":
+        return (
+          <div className="tool-workspace">
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <div className="panel-title">JSON Source</div>
+                  <div className="panel-subtitle">Paste any JSON data structure to infer TypeScript types.</div>
+                </div>
+                <span className="pill">TYPESCRIPT</span>
+              </div>
+              <div className="panel-body field-stack">
+                <div>
+                  <label className="field-label">Root Interface Name</label>
+                  <input className="field" value={jsonToTsRoot} onChange={(e) => setJsonToTsRoot(e.target.value)} placeholder="RootResponse" />
+                </div>
+                <textarea className="textarea" value={jsonToTsInput} onChange={(e) => setJsonToTsInput(e.target.value)} spellCheck={false} placeholder='{"id": 1, "name": "DevHub"}' />
+                <div className="row-wrap">
+                  <button className="btn btn-primary" onClick={runJsonToTs}>
+                    <FileCode2 size={14} /> Generate TypeScript Types
+                  </button>
+                  <button className="btn" onClick={() => { setJsonToTsInput(""); setJsonToTsOutput(""); }}>Clear</button>
+                </div>
+              </div>
+            </section>
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <div className="panel-title">Generated TypeScript</div>
+                  <div className="panel-subtitle">Clean interfaces with nested type extraction</div>
+                </div>
+                <button className="btn" onClick={() => copyText(jsonToTsOutput)}><Copy size={13} /> Copy Types</button>
+              </div>
+              <div className="panel-body">
+                <div className="result-box code-output" style={{ minHeight: 280 }}>
+                  {jsonToTsOutput || "Click 'Generate TypeScript Types' to transform JSON into interfaces."}
                 </div>
               </div>
             </section>
@@ -771,6 +997,47 @@ export default function DevHub() {
           </div>
         );
 
+      case "HTML Codec":
+        return (
+          <div className="tool-workspace">
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <div className="panel-title">HTML & Unicode Input</div>
+                  <div className="panel-subtitle">Text with HTML entities or Unicode escape sequences.</div>
+                </div>
+                <span className="pill">{htmlCodecMode.toUpperCase()}</span>
+              </div>
+              <div className="panel-body field-stack">
+                <div className="row-wrap">
+                  <button className={`btn ${htmlCodecMode === "encode_html" ? "btn-primary" : ""}`} onClick={() => runHtmlCodec("encode_html")}>HTML Encode</button>
+                  <button className={`btn ${htmlCodecMode === "decode_html" ? "btn-primary" : ""}`} onClick={() => runHtmlCodec("decode_html")}>HTML Decode</button>
+                  <button className={`btn ${htmlCodecMode === "escape_unicode" ? "btn-primary" : ""}`} onClick={() => runHtmlCodec("escape_unicode")}>Unicode Escape</button>
+                  <button className={`btn ${htmlCodecMode === "unescape_unicode" ? "btn-primary" : ""}`} onClick={() => runHtmlCodec("unescape_unicode")}>Unicode Unescape</button>
+                </div>
+                <textarea className="textarea" value={htmlInput} onChange={(e) => setHtmlInput(e.target.value)} spellCheck={false} placeholder="Enter HTML or text..." />
+                <div className="row-wrap">
+                  <button className="btn" onClick={() => { setHtmlInput(""); setHtmlOutput(""); }}>Clear</button>
+                </div>
+              </div>
+            </section>
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <div className="panel-title">Encoded / Decoded Result</div>
+                  <div className="panel-subtitle">{htmlOutput ? `${htmlOutput.length} characters` : "Output"}</div>
+                </div>
+                <button className="btn" onClick={() => copyText(htmlOutput)}><Copy size={13} /> Copy</button>
+              </div>
+              <div className="panel-body">
+                <div className="result-box code-output" style={{ minHeight: 240 }}>
+                  {htmlOutput || "Click an action above to transform text."}
+                </div>
+              </div>
+            </section>
+          </div>
+        );
+
       case "UUID Generator":
         return (
           <section className="panel">
@@ -814,6 +1081,73 @@ export default function DevHub() {
               <p className="notice">
                 Generated entirely locally using the browser&apos;s Web Crypto API. No data is sent over the network.
               </p>
+            </div>
+          </section>
+        );
+
+      case "Password Gen":
+        return (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <div className="panel-title">Password Generator & Entropy Meter</div>
+                <div className="panel-subtitle">Create cryptographically secure secrets with Shannon entropy analysis.</div>
+              </div>
+              <span className="pill">WEB CRYPTO</span>
+            </div>
+            <div className="panel-body field-stack">
+              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 14 }}>
+                <div>
+                  <label className="field-label">Length ({passLength} chars)</label>
+                  <input className="field" type="number" min="6" max="128" value={passLength} onChange={(e) => setPassLength(e.target.value)} />
+                </div>
+                <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", paddingTop: 18 }}>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passLower} onChange={(e) => setPassLower(e.target.checked)} /> a-z
+                  </label>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passUpper} onChange={(e) => setPassUpper(e.target.checked)} /> A-Z
+                  </label>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passNumbers} onChange={(e) => setPassNumbers(e.target.checked)} /> 0-9
+                  </label>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passSymbols} onChange={(e) => setPassSymbols(e.target.checked)} /> !@#$
+                  </label>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)", cursor: "pointer" }}>
+                    <input type="checkbox" checked={passNoAmbiguous} onChange={(e) => setPassNoAmbiguous(e.target.checked)} /> Exclude Ambiguous (O, 0, l, 1)
+                  </label>
+                </div>
+              </div>
+              <div className="row-wrap">
+                <button className="btn btn-primary" onClick={runPassGen}><ShieldCheck size={14} /> Generate Password</button>
+                {passResult && (
+                  <button className="btn" onClick={() => copyText(passResult.password)}><Copy size={13} /> Copy Password</button>
+                )}
+              </div>
+              {passResult && (
+                <div className="field-stack" style={{ marginTop: 10 }}>
+                  <div className="result-box code-output" style={{ fontSize: 14, fontWeight: "bold", letterSpacing: 1 }}>
+                    {passResult.password}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                    <div className="panel" style={{ padding: 12 }}>
+                      <div className="field-label">Entropy</div>
+                      <div style={{ fontWeight: "bold", fontSize: 16 }}>{passResult.entropy} bits</div>
+                    </div>
+                    <div className="panel" style={{ padding: 12 }}>
+                      <div className="field-label">Strength</div>
+                      <div style={{ fontWeight: "bold", fontSize: 16, color: passResult.strength === "Strong" ? "var(--green)" : passResult.strength === "Good" ? "#ffd666" : "#ff8b8b" }}>
+                        {passResult.strength}
+                      </div>
+                    </div>
+                    <div className="panel" style={{ padding: 12 }}>
+                      <div className="field-label">Brute-Force Estimate</div>
+                      <div style={{ fontWeight: "bold", fontSize: 13 }}>{passResult.crackTime}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         );
@@ -914,6 +1248,58 @@ export default function DevHub() {
           </section>
         );
 
+      case "Cron Parser":
+        return (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <div className="panel-title">Cron Expression Parser & Schedule Explainer</div>
+                <div className="panel-subtitle">Translate standard 5-part crons into plain language and calculate upcoming runs.</div>
+              </div>
+              <span className="pill">CRON SCHEDULE</span>
+            </div>
+            <div className="panel-body field-stack">
+              <div className="row-wrap" style={{ marginBottom: 4 }}>
+                <span style={{ fontSize: 10, color: "var(--muted)" }}>Quick Presets:</span>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setCronInput("* * * * *"); runCronParser("* * * * *"); }}>Every Minute</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setCronInput("*/15 * * * *"); runCronParser("*/15 * * * *"); }}>Every 15 Min</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setCronInput("0 * * * *"); runCronParser("0 * * * *"); }}>Hourly</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setCronInput("0 0 * * *"); runCronParser("0 0 * * *"); }}>Daily at 00:00</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setCronInput("0 9 * * 1-5"); runCronParser("0 9 * * 1-5"); }}>Weekdays 9 AM</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => { setCronInput("0 0 1 * *"); runCronParser("0 0 1 * *"); }}>Monthly 1st</button>
+              </div>
+              <div>
+                <label className="field-label">Cron Expression (min hr dom mon dow)</label>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <input className="field" style={{ fontSize: 14, fontFamily: "monospace" }} value={cronInput} onChange={(e) => { setCronInput(e.target.value); runCronParser(e.target.value); }} placeholder="* * * * *" />
+                  <button className="btn btn-primary" onClick={() => runCronParser()}><Calendar size={14} /> Parse</button>
+                </div>
+              </div>
+              {cronInfo && (
+                <div className="field-stack" style={{ marginTop: 10 }}>
+                  <div className="panel" style={{ padding: 14, background: "#0c140f", border: "1px solid #284432" }}>
+                    <div className="field-label">Plain English Description</div>
+                    <div style={{ fontSize: 15, fontWeight: "bold", color: "var(--green)" }}>{cronInfo.description}</div>
+                  </div>
+                  {cronInfo.nextRuns.length > 0 && (
+                    <div>
+                      <div className="field-label">Next 5 Upcoming Execution Times (Local Time)</div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {cronInfo.nextRuns.map((run, i) => (
+                          <div key={i} style={{ display: "flex", gap: 10, padding: "7px 12px", background: "#0c130f", border: "1px solid var(--line)", borderRadius: 6, fontSize: 12 }}>
+                            <span style={{ color: "var(--muted)", width: 24 }}>#{i + 1}</span>
+                            <span style={{ color: "var(--text)", fontWeight: "500" }}>{run}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        );
+
       case "JWT Debugger":
         return (
           <div className="tool-workspace">
@@ -1008,6 +1394,89 @@ export default function DevHub() {
           </section>
         );
 
+      case "Chmod Calculator":
+        return (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <div className="panel-title">Linux Chmod Permissions Calculator</div>
+                <div className="panel-subtitle">Interactive visual permissions editor with octal and symbolic commands.</div>
+              </div>
+              <span className="pill">LINUX FS</span>
+            </div>
+            <div className="panel-body field-stack">
+              <div className="row-wrap" style={{ marginBottom: 4 }}>
+                <span style={{ fontSize: 10, color: "var(--muted)" }}>Presets:</span>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => applyChmodOctal("755")}>755 (Exec/Script)</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => applyChmodOctal("644")}>644 (Web File)</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => applyChmodOctal("600")}>600 (Private Key)</button>
+                <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => applyChmodOctal("777")}>777 (Full Access)</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+                <div className="panel" style={{ padding: 14 }}>
+                  <div style={{ fontWeight: "bold", marginBottom: 10, color: "var(--green)" }}>Owner (User)</div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                      <input type="checkbox" checked={chmodPerms.owner.r} onChange={(e) => updateChmod("owner", "r", e.target.checked)} /> Read (r / 4)
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                      <input type="checkbox" checked={chmodPerms.owner.w} onChange={(e) => updateChmod("owner", "w", e.target.checked)} /> Write (w / 2)
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                      <input type="checkbox" checked={chmodPerms.owner.x} onChange={(e) => updateChmod("owner", "x", e.target.checked)} /> Execute (x / 1)
+                    </label>
+                  </div>
+                </div>
+                <div className="panel" style={{ padding: 14 }}>
+                  <div style={{ fontWeight: "bold", marginBottom: 10, color: "var(--green)" }}>Group</div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                      <input type="checkbox" checked={chmodPerms.group.r} onChange={(e) => updateChmod("group", "r", e.target.checked)} /> Read (r / 4)
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                      <input type="checkbox" checked={chmodPerms.group.w} onChange={(e) => updateChmod("group", "w", e.target.checked)} /> Write (w / 2)
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                      <input type="checkbox" checked={chmodPerms.group.x} onChange={(e) => updateChmod("group", "x", e.target.checked)} /> Execute (x / 1)
+                    </label>
+                  </div>
+                </div>
+                <div className="panel" style={{ padding: 14 }}>
+                  <div style={{ fontWeight: "bold", marginBottom: 10, color: "var(--green)" }}>Others (Public)</div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                      <input type="checkbox" checked={chmodPerms.others.r} onChange={(e) => updateChmod("others", "r", e.target.checked)} /> Read (r / 4)
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                      <input type="checkbox" checked={chmodPerms.others.w} onChange={(e) => updateChmod("others", "w", e.target.checked)} /> Write (w / 2)
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                      <input type="checkbox" checked={chmodPerms.others.x} onChange={(e) => updateChmod("others", "x", e.target.checked)} /> Execute (x / 1)
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 10 }}>
+                <div className="panel" style={{ padding: 12 }}>
+                  <div className="field-label">Octal Value</div>
+                  <div style={{ fontSize: 22, fontWeight: "bold", color: "var(--green)" }}>{chmodResult.octal}</div>
+                </div>
+                <div className="panel" style={{ padding: 12 }}>
+                  <div className="field-label">Symbolic Notation</div>
+                  <div style={{ fontSize: 18, fontWeight: "bold", fontFamily: "monospace" }}>{chmodResult.symbolic}</div>
+                </div>
+                <div className="panel" style={{ padding: 12 }}>
+                  <div className="field-label">Command</div>
+                  <div style={{ fontSize: 14, fontFamily: "monospace", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>{chmodResult.command}</span>
+                    <button className="btn" style={{ padding: "3px 7px", fontSize: 10 }} onClick={() => copyText(chmodResult.command)}>Copy</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+
       case "URL Codec":
         return (
           <div className="tool-workspace">
@@ -1062,6 +1531,130 @@ export default function DevHub() {
             </section>
           </div>
         );
+
+      case "CSS Units":
+        return (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <div className="panel-title">CSS Unit & Fluid Clamp Calculator</div>
+                <div className="panel-subtitle">Convert between px, rem, em, and generate responsive CSS clamp() formulas.</div>
+              </div>
+              <span className="pill">CSS TYPOGRAPHY</span>
+            </div>
+            <div className="panel-body field-stack">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px", gap: 10 }}>
+                <div>
+                  <label className="field-label">Value to Convert</label>
+                  <input className="field" type="number" value={cssVal} onChange={(e) => { setCssVal(e.target.value); runCssConvert(); }} />
+                </div>
+                <div>
+                  <label className="field-label">From Unit</label>
+                  <select className="select" value={cssFrom} onChange={(e) => { setCssFrom(e.target.value as "px" | "rem" | "em"); runCssConvert(); }}>
+                    <option value="px">px</option>
+                    <option value="rem">rem</option>
+                    <option value="em">em</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label">Base Font Size (px)</label>
+                  <input className="field" type="number" value={cssBase} onChange={(e) => { setCssBase(e.target.value); runCssConvert(); }} />
+                </div>
+              </div>
+              {cssRes && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 4 }}>
+                  <div className="panel" style={{ padding: 12 }}>
+                    <div className="field-label">Pixels (px)</div>
+                    <div style={{ fontSize: 18, fontWeight: "bold" }}>{cssRes.px}px</div>
+                    <button className="btn" style={{ marginTop: 8, padding: "3px 8px", fontSize: 10 }} onClick={() => copyText(`${cssRes.px}px`)}>Copy</button>
+                  </div>
+                  <div className="panel" style={{ padding: 12 }}>
+                    <div className="field-label">Root EM (rem)</div>
+                    <div style={{ fontSize: 18, fontWeight: "bold", color: "var(--green)" }}>{cssRes.rem}rem</div>
+                    <button className="btn" style={{ marginTop: 8, padding: "3px 8px", fontSize: 10 }} onClick={() => copyText(`${cssRes.rem}rem`)}>Copy</button>
+                  </div>
+                  <div className="panel" style={{ padding: 12 }}>
+                    <div className="field-label">Relative EM (em)</div>
+                    <div style={{ fontSize: 18, fontWeight: "bold" }}>{cssRes.em}em</div>
+                    <button className="btn" style={{ marginTop: 8, padding: "3px 8px", fontSize: 10 }} onClick={() => copyText(`${cssRes.em}em`)}>Copy</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Clamp Generator */}
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+                <div className="panel-title" style={{ marginBottom: 4 }}>Fluid Typography clamp() Generator</div>
+                <div className="panel-subtitle" style={{ marginBottom: 12 }}>Calculates optimal clamp(min, preferred, max) between 375px and 1440px viewports.</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label className="field-label">Min Size (px, e.g. on mobile)</label>
+                    <input className="field" type="number" value={clampMin} onChange={(e) => { setClampMin(e.target.value); runClampGenerate(); }} />
+                  </div>
+                  <div>
+                    <label className="field-label">Max Size (px, e.g. on desktop)</label>
+                    <input className="field" type="number" value={clampMax} onChange={(e) => { setClampMax(e.target.value); runClampGenerate(); }} />
+                  </div>
+                </div>
+                <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center" }}>
+                  <input className="field" readOnly value={clampRes} style={{ fontFamily: "monospace", color: "var(--green)" }} />
+                  <button className="btn" onClick={() => copyText(clampRes)}><Copy size={13} /> Copy clamp</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+
+      case "HTTP Status Codes": {
+        const filteredCodes = HTTP_STATUS_CODES.filter((c) => {
+          const matchCat = httpCategory === "All" || c.category === httpCategory;
+          const matchQuery = `${c.code} ${c.name} ${c.description}`.toLowerCase().includes(httpSearch.toLowerCase());
+          return matchCat && matchQuery;
+        });
+
+        return (
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <div className="panel-title">HTTP Status Codes Reference</div>
+                <div className="panel-subtitle">Comprehensive dictionary of standard response codes and debugging guidelines.</div>
+              </div>
+              <span className="pill">{filteredCodes.length} CODES</span>
+            </div>
+            <div className="panel-body field-stack">
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+                  <Search size={14} style={{ position: "absolute", top: 12, left: 12, color: "#7c8d82" }} />
+                  <input className="field" style={{ paddingLeft: 36 }} value={httpSearch} onChange={(e) => setHttpSearch(e.target.value)} placeholder="Search status code or description (e.g. 404, Unauthorized, Gateway)..." />
+                </div>
+                <div className="tab-list" style={{ margin: 0, padding: 0, border: "none" }}>
+                  {(["All", "1xx", "2xx", "3xx", "4xx", "5xx"] as const).map((cat) => (
+                    <button key={cat} className={`tab-btn ${httpCategory === cat ? "active" : ""}`} onClick={() => setHttpCategory(cat)}>
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 8, maxHeight: 500, overflowY: "auto" }}>
+                {filteredCodes.map((c) => (
+                  <div key={c.code} style={{ display: "flex", gap: 14, padding: "12px 14px", background: "#0c130f", border: "1px solid var(--line)", borderRadius: 8, alignItems: "flex-start" }}>
+                    <span className={c.category === "2xx" ? "badge-2xx" : c.category === "3xx" ? "badge-3xx" : c.category === "1xx" ? "tab-btn active" : "badge-4xx"} style={{ fontSize: 13, minWidth: 46, textAlign: "center" }}>
+                      {c.code}
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: "bold", fontSize: 13, color: "var(--text)" }}>{c.name}</div>
+                      <div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3, lineHeight: 1.5 }}>{c.description}</div>
+                    </div>
+                    <button className="btn" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => copyText(`${c.code} ${c.name}: ${c.description}`)}>
+                      <Copy size={11} /> Copy
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      }
 
       case "Diff Checker":
         return (
@@ -1279,10 +1872,10 @@ export default function DevHub() {
               <div className="panel-head">
                 <div>
                   <div className="panel-title">HTTP Request</div>
-                  <div className="panel-subtitle">Compose requests with custom methods, headers, and body.</div>
+                  <div className="panel-subtitle">Supports environment variables (e.g. &#123;&#123;baseUrl&#125;&#125;).</div>
                 </div>
                 <div className="row-wrap">
-                  <button className="btn" onClick={generateCurl}><Terminal size={12} /> Copy as cURL</button>
+                  <button className="btn" onClick={generateCurl}><Terminal size={12} /> Copy cURL</button>
                 </div>
               </div>
               <div className="panel-body field-stack">
@@ -1296,7 +1889,7 @@ export default function DevHub() {
                     <option>HEAD</option>
                     <option>OPTIONS</option>
                   </select>
-                  <input className="field" value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://jsonplaceholder.typicode.com/posts/1" />
+                  <input className="field" value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="https://api.example.com/items" />
                 </div>
 
                 <div className="tab-list">
@@ -1305,6 +1898,9 @@ export default function DevHub() {
                   </button>
                   <button className={`tab-btn ${apiActiveTab === "body" ? "active" : ""}`} onClick={() => setApiActiveTab("body")}>
                     Body {["POST", "PUT", "PATCH"].includes(apiMethod) ? "●" : ""}
+                  </button>
+                  <button className={`tab-btn ${apiActiveTab === "env" ? "active" : ""}`} onClick={() => setApiActiveTab("env")}>
+                    Variables ({apiEnvVars.length})
                   </button>
                 </div>
 
@@ -1349,6 +1945,40 @@ export default function DevHub() {
                       }}>Format JSON Body</button>
                     </div>
                     <textarea className="textarea" style={{ minHeight: 140 }} value={apiBody} onChange={(e) => setApiBody(e.target.value)} spellCheck={false} />
+                  </div>
+                )}
+
+                {apiActiveTab === "env" && (
+                  <div className="field-stack">
+                    <div className="notice">Define variables to interpolate into URLs and headers using &#123;&#123;key&#125;&#125;.</div>
+                    {apiEnvVars.map((env, idx) => (
+                      <div key={idx} style={{ display: "grid", gridTemplateColumns: "24px 1fr 1fr 28px", gap: 6, alignItems: "center" }}>
+                        <input type="checkbox" checked={env.enabled} onChange={(e) => {
+                          const updated = [...apiEnvVars];
+                          updated[idx].enabled = e.target.checked;
+                          saveApiEnv(updated);
+                        }} />
+                        <input className="field" placeholder="Variable Name" value={env.key} onChange={(e) => {
+                          const updated = [...apiEnvVars];
+                          updated[idx].key = e.target.value;
+                          saveApiEnv(updated);
+                        }} />
+                        <input className="field" placeholder="Value" value={env.value} onChange={(e) => {
+                          const updated = [...apiEnvVars];
+                          updated[idx].value = e.target.value;
+                          saveApiEnv(updated);
+                        }} />
+                        <button className="btn" style={{ padding: 6 }} onClick={() => {
+                          const updated = apiEnvVars.filter((_, i) => i !== idx);
+                          saveApiEnv(updated);
+                        }}>
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => saveApiEnv([...apiEnvVars, { key: "", value: "", enabled: true }])}>
+                      + Add Variable
+                    </button>
                   </div>
                 )}
 
@@ -1431,6 +2061,9 @@ export default function DevHub() {
                 <div className="panel-subtitle">Your dedicated software engineering copilot for debugging, refactoring, and tests.</div>
               </div>
               <div className="row-wrap">
+                <button className="btn" onClick={exportAiChat} title="Export conversation as Markdown">
+                  <Download size={13} /> Export Chat
+                </button>
                 <button className="btn" onClick={() => setAiShowSettings(!aiShowSettings)}>
                   <SlidersHorizontal size={13} /> Settings
                 </button>
@@ -1627,8 +2260,8 @@ export default function DevHub() {
           <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8 }}>
             <span className="status-dot" />All systems operational
           </div>
-          <div className="notice">15 developer utilities · Web Crypto ready</div>
-          <div className="notice" style={{ marginTop: 10 }}>DEVHUB <span style={{ color: "#a1ffb4" }}>v2.0.0</span></div>
+          <div className="notice">{tools.length} developer utilities · Web Crypto ready</div>
+          <div className="notice" style={{ marginTop: 10 }}>DEVHUB <span style={{ color: "#a1ffb4" }}>v2.1.0</span></div>
         </div>
       </aside>
 
@@ -1672,7 +2305,7 @@ export default function DevHub() {
                   <div className="eyebrow"><span className="status-dot" /> DEVELOPER COMMAND CENTER</div>
                   <h1>Build faster.<br /><span className="accent">Ship smarter.</span></h1>
                   <p className="subtitle">
-                    An all-in-one dark terminal developer suite with 15 essential utilities: format payloads, generate cryptographic IDs, inspect JWTs, test regular expressions, interact with REST APIs, and chat with your AI copilot.
+                    An all-in-one dark terminal developer suite with {tools.length} essential utilities: TypeScript types from JSON, cron parser, password entropy analyzer, chmod permissions, CSS clamps, HTTP status codes, REST API client, and AI copilot.
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1690,17 +2323,17 @@ export default function DevHub() {
                 <div className="panel stat">
                   <div className="stat-top"><span>TOOLKIT</span><Braces size={15} color="#7cff9b" /></div>
                   <div className="stat-value">{tools.length}</div>
-                  <div className="stat-foot">100% Client-Side Web Crypto</div>
+                  <div className="stat-foot">Client-Side Web Crypto & Standards</div>
                 </div>
                 <div className="panel stat">
                   <div className="stat-top"><span>API WORKSPACE</span><Workflow size={15} color="#7cff9b" /></div>
                   <div className="stat-value" style={{ fontSize: 20 }}>REST Client</div>
-                  <div className="stat-foot">Headers, body, cURL generator</div>
+                  <div className="stat-foot">Env variables, cURL, latency</div>
                 </div>
                 <div className="panel stat">
                   <div className="stat-top"><span>AI COPILOT</span><Sparkles size={15} color="#7cff9b" /></div>
                   <div className="stat-value" style={{ fontSize: 20 }}>Multi-Turn</div>
-                  <div className="stat-foot">Server-side or custom OpenAI key</div>
+                  <div className="stat-foot">Chat export, custom OpenAI key</div>
                 </div>
                 <div className="panel stat">
                   <div className="stat-top"><span>COMMAND PALETTE</span><Command size={15} color="#7cff9b" /></div>
@@ -1730,7 +2363,7 @@ export default function DevHub() {
                 <div className="panel-body">
                   <div style={{ position: "relative", marginBottom: 14 }}>
                     <Search size={14} style={{ position: "absolute", top: 12, left: 12, color: "#7c8d82" }} />
-                    <input className="field" style={{ paddingLeft: 36 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter tools by name, tag, or description… (e.g. JWT, Base64, UUID, Regex)" />
+                    <input className="field" style={{ paddingLeft: 36 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter tools by name, tag, or description… (e.g. TypeScript, Cron, Chmod, Passwords, HTTP)" />
                   </div>
                   <div className="tool-grid">
                     {filteredTools.map(toolCard)}
@@ -1762,7 +2395,7 @@ export default function DevHub() {
           )}
 
           <div className="footer-note">
-            DEVHUB · All-in-One Developer Platform · Powered by Next.js & Web Standards · Local-first & Private
+            DEVHUB v2.1.0 · All-in-One Developer Platform · Powered by Next.js & Web Standards · Local-first & Private
           </div>
         </div>
       </main>
@@ -1776,7 +2409,7 @@ export default function DevHub() {
               <input
                 className="cmd-input"
                 autoFocus
-                placeholder="Type a tool name or command... (e.g. JSON, JWT, API, Diff)"
+                placeholder="Type a tool name or command... (e.g. JSON, TypeScript, Cron, Chmod, Passwords)"
                 value={cmdSearch}
                 onChange={(e) => setCmdSearch(e.target.value)}
               />
@@ -1807,7 +2440,7 @@ export default function DevHub() {
                 })}
               <div style={{ padding: "8px 12px", borderTop: "1px solid var(--line)", display: "flex", justifyContent: "space-between", color: "#617067", fontSize: 10 }}>
                 <span>Navigation: Click or Enter</span>
-                <span>DevHub v2.0</span>
+                <span>DevHub v2.1.0</span>
               </div>
             </div>
           </div>
